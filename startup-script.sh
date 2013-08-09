@@ -48,3 +48,9 @@ declare -r HADOOP_LOG_DIR=/var/log/hadoop
 mkdir $HADOOP_LOG_DIR
 chgrp hadoop $HADOOP_LOG_DIR
 chmod g+w $HADOOP_LOG_DIR
+
+# Error check in CreateTrackerDirIfNeeded() in gslib/util.py in gsutil 3.34
+# (line 114) raises exception when called from Hadoop streaming MapReduce,
+# saying permission error to create /homes.
+perl -pi -e '$.>110 and $.<120 and s/raise$/pass/'  \
+    /usr/local/share/google/gsutil/gslib/util.py

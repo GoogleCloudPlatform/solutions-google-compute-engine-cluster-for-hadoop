@@ -19,23 +19,20 @@
 
 import unittest
 
-import apiclient.discovery
-
+import apiclient
 import mock
-from mock import MagicMock
+import oauth2client
+import oauth2client.client
 
-import oauth2client.file
-import oauth2client.tools
-
-from gce_api import GceApi
+import gce_api
 
 
 class GceApiTest(unittest.TestCase):
   """Unit test class of GceApi."""
 
   def setUp(self):
-    self.gce_api = GceApi('gce_api_test', 'CLIENT_ID', 'CLIENT_SECRET',
-                          'project-name', 'zone-name')
+    self.gce_api = gce_api.GceApi('gce_api_test', 'CLIENT_ID', 'CLIENT_SECRET',
+                                  'project-name', 'zone-name')
 
   def tearDown(self):
     mock.patch.stopall()
@@ -50,19 +47,21 @@ class GceApiTest(unittest.TestCase):
     Returns:
       Dictionary that holds mocks created.
     """
-    mock_local_credentials = MagicMock(
+    mock_local_credentials = mock.MagicMock(
         spec=oauth2client.client.Credentials, name='Mock Credentials')
-    mock_http_local = MagicMock(name='HTTP authorized by local credentials')
+    mock_http_local = mock.MagicMock(
+        name='HTTP authorized by local credentials')
     mock_local_credentials.authorize.return_value = mock_http_local
 
-    mock_new_credentials = MagicMock(
+    mock_new_credentials = mock.MagicMock(
         spec=oauth2client.client.Credentials, name='Mock New Credentials')
-    mock_http_new = MagicMock(name='HTTP authorized by new credentials')
+    mock_http_new = mock.MagicMock(name='HTTP authorized by new credentials')
     mock_new_credentials.authorize.return_value = mock_http_new
-    mock_api = MagicMock(name='Google Client API')
+    mock_api = mock.MagicMock(name='Google Client API')
 
     mock_storage_class = mock.patch('oauth2client.file.Storage').start()
-    mock_flow_class = mock.patch('gce_api.OAuth2WebServerFlow').start()
+    mock_flow_class = mock.patch(
+        'oauth2client.client.OAuth2WebServerFlow').start()
     mock.patch('oauth2client.tools.run',
                return_value=mock_new_credentials).start()
     mock.patch('apiclient.discovery.build', return_value=mock_api).start()
@@ -75,7 +74,7 @@ class GceApiTest(unittest.TestCase):
       mock_storage.get.return_value = mock_local_credentials
       mock_local_credentials.invalid = not credentials_validity
     mock_flow = mock_flow_class.return_value
-    apiclient.discovery.build = MagicMock(return_value=mock_api)
+    apiclient.discovery.build = mock.MagicMock(return_value=mock_api)
 
     return {'api': mock_api,
             'storage_class': mock_storage_class,
@@ -145,12 +144,12 @@ class GceApiTest(unittest.TestCase):
 
   def testGetInstance(self):
     """Unit test of GetInstance()."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
 
     instance_info = self.gce_api.GetInstance('instance-name')
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.get.assert_called_once_with(
         project='project-name', zone='zone-name', instance='instance-name')
     (mock_api.instances.return_value.get.return_value.execute.
@@ -161,15 +160,15 @@ class GceApiTest(unittest.TestCase):
 
   def testListInstance_NoFilter(self):
     """Unit test of ListInstance() without filter string."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.list.return_value.execute.return_value = {
         'items': ['dummy', 'list']
     }
 
     instance_list = self.gce_api.ListInstances()
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.list.assert_called_once_with(
         project='project-name', zone='zone-name', filter=None)
     (mock_api.instances.return_value.list.return_value.execute.
@@ -178,15 +177,15 @@ class GceApiTest(unittest.TestCase):
 
   def testListInstance_Filter(self):
     """Unit test of ListInstance() with filter string."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.list.return_value.execute.return_value = {
         'items': ['dummy', 'list']
     }
 
     instance_list = self.gce_api.ListInstances('filter condition')
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.list.assert_called_once_with(
         project='project-name', zone='zone-name', filter='filter condition')
     (mock_api.instances.return_value.list.return_value.execute.
@@ -195,8 +194,8 @@ class GceApiTest(unittest.TestCase):
 
   def testCreateInstance_Success(self):
     """Unit test of CreateInstance() with success result."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.insert.return_value.execute.return_value = {
         'name': 'instance-name'
     }
@@ -204,7 +203,7 @@ class GceApiTest(unittest.TestCase):
     self.assertTrue(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -212,8 +211,8 @@ class GceApiTest(unittest.TestCase):
 
   def testCreateInstance_SuccessWithWarning(self):
     """Unit test of CreateInstance() with warning."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.insert.return_value.execute.return_value = {
         'name': 'instance-name',
         'warnings': [
@@ -228,7 +227,7 @@ class GceApiTest(unittest.TestCase):
     self.assertTrue(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -236,8 +235,8 @@ class GceApiTest(unittest.TestCase):
 
   def testCreateInstance_Error(self):
     """Unit test of CreateInstance() with error."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.insert.return_value.execute.return_value = {
         'name': 'instance-name',
         'error': {
@@ -254,7 +253,7 @@ class GceApiTest(unittest.TestCase):
     self.assertFalse(self.gce_api.CreateInstance(
         'instance-name', 'machine-type', 'image-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.insert.assert_called_once_with(
         project='project-name', zone='zone-name', body=mock.ANY)
     (mock_api.instances.return_value.insert.return_value.execute.
@@ -262,15 +261,15 @@ class GceApiTest(unittest.TestCase):
 
   def testDeleteInstance(self):
     """Unit test of DeleteInstance()."""
-    mock_api = MagicMock(name='Mock Google Client API')
-    self.gce_api.GetApi = MagicMock(return_value=mock_api)
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.insert.return_value.execute.return_value = {
         'name': 'instance-name'
     }
 
     self.assertTrue(self.gce_api.DeleteInstance('instance-name'))
 
-    self.gce_api.GetApi.assert_called_once()
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
     mock_api.instances.return_value.delete.assert_called_once_with(
         project='project-name', zone='zone-name', instance='instance-name')
     (mock_api.instances.return_value.delete.return_value.execute.

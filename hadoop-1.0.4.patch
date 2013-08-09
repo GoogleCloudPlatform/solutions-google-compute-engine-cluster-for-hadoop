@@ -42,7 +42,7 @@ diff -rU3 hadoop-1.0.4/conf/hadoop-env.sh hadoop-1.0.4.modified/conf/hadoop-env.
 
  # The java implementation to use.  Required.
 -# export JAVA_HOME=/usr/lib/j2sdk1.5-sun
-+export JAVA_HOME=/usr/lib/jvm/default-java
++export JAVA_HOME=/usr/lib/jvm/java-6-openjdk-amd64
 
  # Extra Java CLASSPATH elements.  Optional.
  # export HADOOP_CLASSPATH=

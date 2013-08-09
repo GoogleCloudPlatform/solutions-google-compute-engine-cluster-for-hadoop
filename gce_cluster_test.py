@@ -21,7 +21,6 @@ import argparse
 import unittest
 
 import mock
-from mock import MagicMock
 
 import gce_cluster
 from gce_cluster import GceCluster
@@ -40,7 +39,7 @@ class GceClusterTest(unittest.TestCase):
       Parent mock that enables calls of other mocks.
     """
     # Patch functions.
-    mock_gce_api_class = mock.patch('gce_cluster.GceApi').start()
+    mock_gce_api_class = mock.patch('gce_api.GceApi').start()
     mock_tarfile_open = mock.patch('tarfile.open').start()
     mock_subprocess_call = mock.patch('subprocess.call', return_value=0).start()
     mock_popen = mock.patch('subprocess.Popen').start()
@@ -51,7 +50,7 @@ class GceClusterTest(unittest.TestCase):
 
     # Create parent mock and attach other mocks to it, so that we can
     # track call order of all mocks.
-    parent_mock = MagicMock()
+    parent_mock = mock.MagicMock()
     parent_mock.attach_mock(mock_gce_api_class, 'GceApi')
     parent_mock.attach_mock(
         mock_gce_api_class.return_value.CreateInstance,
@@ -83,7 +82,7 @@ class GceClusterTest(unittest.TestCase):
       mock_subprocess_call.assert_called_once_with(mock.ANY, shell=True)
       self.assertRegexpMatches(
           mock_subprocess_call.call_args[0][0],
-          '/preprocess.sh project-foo gs://bucket-bar/mapreduce/tmp$')
+          '/preprocess.sh \\S+ project-foo gs://bucket-bar/mapreduce/tmp$')
 
   def testEnvironmentSetUp_Error(self):
     """Unit test of EnvironmentSetUp() with non-zero return value."""
@@ -98,7 +97,7 @@ class GceClusterTest(unittest.TestCase):
       mock_subprocess_call.assert_called_once_with(mock.ANY, shell=True)
       self.assertRegexpMatches(
           mock_subprocess_call.call_args[0][0],
-          '/preprocess.sh project-foo gs://bucket-bar/mapreduce/tmp$')
+          '/preprocess.sh \\S+ project-foo gs://bucket-bar/mapreduce/tmp$')
 
   def testStartCluster(self):
     """Unit test of StartCluster()."""
@@ -149,15 +148,15 @@ class GceClusterTest(unittest.TestCase):
     # Compress generated files to tar.gz.
     call = method_calls.next()
     self.assertEqual('tarfile_open', call[0])
-    self.assertEqual('generated_files.tar.gz', call[1][0])
+    self.assertRegexpMatches(call[1][0], 'generated_files\\.tar\\.gz$')
     self.assertEqual('w|gz', call[1][1])
     # Upload generated config files to Cloud Storage.
     call = method_calls.next()
     self.assertEqual('subprocess_call', call[0])
-    self.assertEqual(
-        'gsutil cp generated_files.tar.gz '
-        'gs://bucket-fuga/mapreduce/tmp/generated_files.tar.gz',
-        call[1][0])
+    self.assertRegexpMatches(
+        call[1][0],
+        '^gsutil cp .*generated_files\\.tar\\.gz '
+        'gs://bucket-fuga/mapreduce/tmp/$')
     self.assertTrue(call[2]['shell'])
     # Wait.
     call = method_calls.next()
@@ -313,7 +312,7 @@ class GceClusterTest(unittest.TestCase):
 
   def testTeardownCluster(self):
     """Unit test of TeardownCluster()."""
-    with mock.patch('gce_cluster.GceApi') as mock_gce_api_class:
+    with mock.patch('gce_api.GceApi') as mock_gce_api_class:
       mock_gce_api_class.return_value.ListInstances.return_value = [
           {'name': 'fugafuga'},
           {'name': 'hogehoge'},
@@ -337,7 +336,7 @@ class GceClusterTest(unittest.TestCase):
 
   def testTeardownCluster_WithPrefix(self):
     """Unit test of TeardownCluster() with prefix."""
-    with mock.patch('gce_cluster.GceApi') as mock_gce_api_class:
+    with mock.patch('gce_api.GceApi') as mock_gce_api_class:
       mock_gce_api_class.return_value.ListInstances.return_value = [
           {'name': 'wahoooo'},
       ]
@@ -359,7 +358,7 @@ class GceClusterTest(unittest.TestCase):
 
   def testTeardownCluster_NoInstance(self):
     """Unit test of TeardownCluster() with no instance returned by list."""
-    with mock.patch('gce_cluster.GceApi') as mock_gce_api_class:
+    with mock.patch('gce_api.GceApi') as mock_gce_api_class:
       # ListInstances() returns empty list.
       mock_gce_api_class.return_value.ListInstances.return_value = []
 

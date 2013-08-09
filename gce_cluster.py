@@ -23,7 +23,7 @@ import subprocess
 import tarfile
 import time
 
-from gce_api import GceApi
+import gce_api
 
 
 def MakeScriptRelativePath(relative_path):
@@ -62,10 +62,15 @@ class GceCluster(object):
   CLIENT_SECRET = '{{{{ client_secret }}}}'
 
   DEFAULT_ZONE = 'us-central2-a'
-  DEFAULT_IMAGE = 'gcel-12-04-v20130104'
+  DEFAULT_IMAGE = ('projects/debian-cloud/global/images/'
+                   'debian-7-wheezy-v20130723')
   DEFAULT_MACHINE_TYPE = 'n1-highcpu-4-d'
   COMPUTE_STARTUP_SCRIPT = 'startup-script.sh'
-  GENERATED_FILES_DIR = 'generated_files'
+
+  LOCAL_TMP_DIR = '.'
+  GENERATED_FILES_DIR_NAME = 'generated_files'
+  GENERATED_FILES_DIR = os.path.join(LOCAL_TMP_DIR, GENERATED_FILES_DIR_NAME)
+
   MASTER_NAME = 'hm'
   WORKER_NAME_CORE = 'hw'
 
@@ -89,12 +94,13 @@ class GceCluster(object):
 
     self.zone = getattr(self.flags, 'zone', None) or self.DEFAULT_ZONE
     self.startup_script = None
+    logging.debug('Current directory: %s', os.getcwd())
 
   def _GetApi(self):
     if not self.api:
-      self.api = GceApi('hadoop_on_compute',
-                        self.CLIENT_ID, self.CLIENT_SECRET,
-                        self.flags.project, self.zone)
+      self.api = gce_api.GceApi('hadoop_on_compute',
+                                self.CLIENT_ID, self.CLIENT_SECRET,
+                                self.flags.project, self.zone)
     return self.api
 
   def _StartInstance(self, instance_name):
@@ -260,7 +266,8 @@ class GceCluster(object):
       EnvironmentSetUpError: Script failed.
     """
     command = ' '.join([MakeScriptRelativePath('preprocess.sh'),
-                        self.flags.project, self.tmp_storage])
+                        self.LOCAL_TMP_DIR, self.flags.project,
+                        self.tmp_storage])
     logging.debug('Enviroment set-up command: %s', command)
     if subprocess.call(command, shell=True):
       # Non-zero return code indicates an error.
@@ -276,13 +283,13 @@ class GceCluster(object):
     # Archive generaged_files and upload to Cloud Storage
     generated_files_archive = self.GENERATED_FILES_DIR + '.tar.gz'
     tgz = tarfile.open(generated_files_archive, 'w|gz')
-    tgz.add(self.GENERATED_FILES_DIR)
+    tgz.add(self.GENERATED_FILES_DIR, arcname=self.GENERATED_FILES_DIR_NAME)
     tgz.close()
-    genfile_copy_command = 'gsutil cp %(filename)s %(gcs_dir)s/%(filename)s' % {
+    genfile_copy_command = 'gsutil cp %(filename)s %(gcs_dir)s/' % {
         'filename': generated_files_archive,
         'gcs_dir': self.tmp_storage
     }
-    logging.debug('Geenrated file copy command: %s', genfile_copy_command)
+    logging.debug('Generated file copy command: %s', genfile_copy_command)
     if subprocess.call(genfile_copy_command, shell=True):
       # Non-zero return code indicates an error.
       raise ClusterSetUpError('Generated file copy error.')

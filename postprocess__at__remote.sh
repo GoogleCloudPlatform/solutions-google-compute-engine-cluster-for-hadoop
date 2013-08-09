@@ -21,7 +21,8 @@ declare -r HADOOP_DIR=hadoop-1.0.*
 declare -r GENERATED_FILES_DIR=generated_files
 declare -r HADOOP_HOME=/home/hadoop
 
-declare -r JAVA_PACKAGE=openjdk-6-jre*_amd64.deb
+declare -r DEB_PACKAGE_DIR=deb_packages
+declare -r LOCAL_PACKAGE_DIR=$TMP_DIR/$DEB_PACKAGE_DIR
 
 function die() {
   echo 1>&2
@@ -35,10 +36,10 @@ function die() {
 mkdir -p $TMP_DIR
 
 # Download packages from Cloud Storage
-gsutil cp $TMP_CLOUD_STORAGE/$HADOOP_DIR.tar.gz  \
-          $TMP_CLOUD_STORAGE/$GENERATED_FILES_DIR.tar.gz  \
-          $TMP_CLOUD_STORAGE/$JAVA_PACKAGE  \
-          $TMP_DIR ||  \
+gsutil -m cp -R $TMP_CLOUD_STORAGE/$HADOOP_DIR.tar.gz  \
+                $TMP_CLOUD_STORAGE/$GENERATED_FILES_DIR.tar.gz  \
+                $TMP_CLOUD_STORAGE/$DEB_PACKAGE_DIR  \
+                $TMP_DIR/ ||  \
     die "Failed to download Hadoop and generated files packages from "  \
         "$TMP_CLOUD_STORAGE/"
 
@@ -50,10 +51,7 @@ chmod o+x $TMP_DIR/$GENERATED_FILES_DIR/ssh-key
 chmod o+r $TMP_DIR/$GENERATED_FILES_DIR/ssh-key/*
 
 # Set up Java Runtime Environment
-sudo dpkg -i $TMP_DIR/$JAVA_PACKAGE
-sudo apt-get update
-sudo apt-get install -fy
-sudo apt-get install -y default-jre
+sudo dpkg -i --force-depends $LOCAL_PACKAGE_DIR/*.deb
 
 # Set up hosts
 sudo bash -c "cat $TMP_DIR/$GENERATED_FILES_DIR/hosts >> /etc/hosts"
@@ -68,6 +66,11 @@ cp -f $TMP_DIR/$GENERATED_FILES_DIR/ssh-key/* $HADOOP_HOME/.ssh
 mv -f $HADOOP_HOME/.ssh/id_rsa.pub $HADOOP_HOME/.ssh/authorized_keys
 chmod 600 $HADOOP_HOME/.ssh/id_rsa
 chmod 700 $HADOOP_HOME/.ssh
+
+# Allow SSH between Hadoop cluster instances without user intervention.
+echo "Host *" >> \$HOME/.ssh/config
+echo "  StrictHostKeyChecking no" >> \$HOME/.ssh/config
+chmod 600 \$HOME/.ssh/config
 
 tar zxf $TMP_DIR/$HADOOP_DIR.tar.gz -C $HADOOP_HOME
 ln -s $HADOOP_HOME/$HADOOP_DIR $HADOOP_HOME/hadoop
@@ -90,7 +93,7 @@ perl -pi -e "s/###EXTERNAL_IP_ADDRESS###/\$EXTERNAL_IP_ADDRESS/g"  \
 
 # Set PATH for hadoop user
 echo "export PATH=$HADOOP_HOME/hadoop/bin:\$PATH" >> $HADOOP_HOME/.profile
-echo "export JAVA_HOME=/usr/lib/jvm/default-java" >> $HADOOP_HOME/.profile
+echo "export JAVA_HOME=/usr/lib/jvm/java-6-openjdk-amd64" >> $HADOOP_HOME/.profile
 
 NEKO
 

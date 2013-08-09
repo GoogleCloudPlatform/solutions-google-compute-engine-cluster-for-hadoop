@@ -32,7 +32,7 @@ if [[ "$1" != "--" ]] ; then
 fi
 shift
 
-gcutil --project=$PROJECT push --zone=$ZONE $HOST $SCRIPT /tmp ||  \
+gcutil --project=$PROJECT push --zone=$ZONE $HOST $(dirname $0)/$SCRIPT /tmp ||  \
     die "Failed to push script $SCRIPT to $HOST"
 
 if [ -n "$AS_USER" ] ; then

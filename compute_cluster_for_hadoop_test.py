@@ -22,7 +22,7 @@ import unittest
 
 import mock
 
-from compute_cluster_for_hadoop import ComputeClusterForHadoop
+import compute_cluster_for_hadoop
 
 
 class ComputeClusterForHadoopTest(unittest.TestCase):
@@ -35,11 +35,12 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testSetUp(self):
     """Setup sub-command unit test."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'setup', 'project-name', 'bucket-name'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       self.assertEqual('bucket-name', flags.bucket)
@@ -47,19 +48,21 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testSetUp_NoBucket(self):
     """Setup sub-command unit test with no bucket option."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
+    with mock.patch('gce_cluster.GceCluster'):
       # Fails to execute sub-command.
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['setup', 'project-name'])
 
   def testStart(self):
     """Start sub-command unit test."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-name', 'bucket-name', '10'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       self.assertEqual('bucket-name', flags.bucket)
@@ -68,11 +71,12 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testStart_DefaultClusterSize(self):
     """Start sub-command unit test with default cluster size."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-foo', 'bucket-bar'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-foo', flags.project)
       self.assertEqual('bucket-bar', flags.bucket)
@@ -81,12 +85,13 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testStart_OptionalParams(self):
     """Start sub-command unit test with optional params."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-name', 'bucket-name', '--prefix', 'fuga',
           '--zone', 'piyo', '--command', '"additional command"'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       self.assertEqual('bucket-name', flags.bucket)
@@ -98,59 +103,63 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testStart_Prefix(self):
     """Start sub-command unit test with long prefix."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster'):
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-piyo', 'bucket-bar',
           '--prefix', 'a6b-c'])
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+      hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-piyo', 'bucket-bar',
           '--prefix', 'ends-with-dash-'])
 
       # Invalid patterns.
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-piyo', 'bucket-bar',
                          '--prefix', 'insanely-long-prefix'])
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-piyo', 'bucket-bar',
                          '--prefix', 'upperCase'])
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-piyo', 'bucket-bar',
                          '--prefix', 'invalid*char'])
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-piyo', 'bucket-bar',
                          '--prefix', '0number'])
 
   def testStart_NoBucket(self):
     """Start sub-command unit test with no bucket option."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
+    with mock.patch('gce_cluster.GceCluster'):
       # Fails to execute sub-command.
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-hoge'])
 
   def testShutdown(self):
     """Shutdown sub-command unit test."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'shutdown', 'project-name'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       mock_cluster.return_value.TeardownCluster.assert_called_once_with()
 
   def testShutdown_OptionalParams(self):
     """Shutdown sub-command unit test with optional params."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'shutdown', 'project-name', '--prefix', 'foo',
           '--zone', 'abc'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       self.assertEqual('foo', flags.prefix)
@@ -159,29 +168,32 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testShutdown_MissingParamValue(self):
     """Shutdown sub-command unit test with missing param value."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
+    with mock.patch('gce_cluster.GceCluster'):
       # Fails to execute sub-command.
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['shutdown', 'project-name', '--prefix'])
 
   def testShutdown_InvalidOption(self):
     """Shutdown sub-command unit test with invalid optional param."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
+    with mock.patch('gce_cluster.GceCluster'):
       # Fails to execute sub-command.
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['shutdown', 'project-name', '--image', 'foo'])
 
   def testMapReduce(self):
     """MapReduce sub-command unit test."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster') as mock_cluster:
-      ComputeClusterForHadoop().ParseArgumentsAndExecute([
+    with mock.patch('gce_cluster.GceCluster') as mock_cluster:
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      hadoop_cluster.ParseArgumentsAndExecute([
           'mapreduce', 'project-name', 'bucket-name',
           '--input', 'gs://some-bucket/inputs',
           '--output', 'gs://some-bucket/outputs'])
 
-      mock_cluster.assert_called_once()
+      self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
       self.assertEqual('project-name', flags.project)
       self.assertEqual('bucket-name', flags.bucket)
@@ -191,9 +203,10 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
 
   def testMapReduce_NoInputOutput(self):
     """MapReduce sub-command unit test."""
-    with mock.patch('compute_cluster_for_hadoop.GceCluster'):
+    with mock.patch('gce_cluster.GceCluster'):
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       self.assertRaises(SystemExit,
-                        ComputeClusterForHadoop().ParseArgumentsAndExecute,
+                        hadoop_cluster.ParseArgumentsAndExecute,
                         ['mapreduce', 'project-name', 'bucket-name'])
 
 

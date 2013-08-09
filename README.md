@@ -134,6 +134,11 @@ Download Hadoop 1.0.4 package (hadoop-1.0.4.tar.gz) from one of
 
 Put the downloaded package to the root directory of this sample
 (`compute_engine_cluster_for_hadoop`), the same directory as hadoop-1.0.4.patch.
+Download can be performed from your Web browser and the file can be copied
+to the working directory.  Alternatively, command line tools, such as `curl`
+or `wget` may be used.
+
+    curl -O http://archive.apache.org/dist/hadoop/core/hadoop-1.0.4/hadoop-1.0.4.tar.gz
 
 ##### Customize Hadoop configuration and re-package
 
@@ -145,21 +150,39 @@ execute the following commands.
     patch -p0 < hadoop-1.0.4.patch
     tar zcf hadoop-1.0.4.tar.gz hadoop-1.0.4
 
-### Download Open JDK Package
+### Download Open JDK and Dependent Packages
 
 The sample uses [Open JDK](http://openjdk.java.net/) as Java runtime
 environment.  Open JDK Java Runtime Environment is distributed under
 [GNU Public License version 2](http://www.gnu.org/licenses/gpl-2.0.html).
 User must agree to the license to use Open JDK.
 
-Download openjdk-6-jre-headless and openjdk-6-jre packages from the following
-pages.  Download amd64 packages.
+Create a directory called "deb_packages" under the root directory of the sample.
 
-[http://packages.ubuntu.com/precise/openjdk-6-jre](http://packages.ubuntu.com/precise/openjdk-6-jre)
+Download amd64 package of openjdk-6-jre-headless, and architecture-common
+package of openjdk-6-jre-lib from the following sites.
 
-[http://packages.ubuntu.com/precise/openjdk-6-jre-headless](http://packages.ubuntu.com/precise/openjdk-6-jre-headless)
+* [http://packages.debian.org/wheezy/openjdk-6-jre-headless](http://packages.debian.org/wheezy/openjdk-6-jre-headless)
+* [http://packages.debian.org/wheezy/openjdk-6-jre-lib](http://packages.debian.org/wheezy/openjdk-6-jre-lib)
 
-Put the downloaded package to the same directory as the sample.
+Also download dependent packages.
+
+* [http://packages.debian.org/wheezy/libnss3-1d](http://packages.debian.org/wheezy/libnss3-1d) [amd64]
+* [http://packages.debian.org/wheezy/libnss3](http://packages.debian.org/wheezy/libnss3) [amd64]
+* [http://packages.debian.org/wheezy/ca-certificates-java](http://packages.debian.org/wheezy/ca-certificates-java) [architecture-common]
+* [http://packages.debian.org/wheezy/libnspr4](http://packages.debian.org/wheezy/libnspr4) [amd64]
+
+Put the downloaded packages into the `deb_packages` directory.
+
+    mkdir deb_packages
+    cd deb_packages
+    curl -O http://security.debian.org/debian-security/pool/updates/main/o/openjdk-6/openjdk-6-jre-headless_6b27-1.12.6-1~deb7u1_amd64.deb
+    curl -O http://security.debian.org/debian-security/pool/updates/main/o/openjdk-6/openjdk-6-jre-lib_6b27-1.12.6-1~deb7u1_all.deb
+    curl -O http://http.us.debian.org/debian/pool/main/n/nss/libnss3-1d_3.14.3-1_amd64.deb
+    curl -O http://http.us.debian.org/debian/pool/main/n/nss/libnss3_3.14.3-1_amd64.deb
+    curl -O http://http.us.debian.org/debian/pool/main/c/ca-certificates-java/ca-certificates-java_20121112+nmu2_all.deb
+    curl -O http://http.us.debian.org/debian/pool/main/n/nspr/libnspr4_4.9.2-1_amd64.deb
+    cd ..
 
 ### Prepare Google Cloud Storage bucket
 
@@ -205,8 +228,6 @@ gce\_cluster.py with the actual values from Google APIs Console.
 
 The following libraries are required by the sample, and here is the example of
 how to set up libraries in the sample application directory.
-Alternatively, the libraries may be installed to the system by setup.py script
-included in each library.
 
 ##### Google Client API
 
@@ -217,7 +238,7 @@ Download google-api-python-client-1.1.tar.gz from
 [download page](http://code.google.com/p/google-api-python-client/downloads/list)
 or by the following command.
 
-    wget http://google-api-python-client.googlecode.com/files/google-api-python-client-1.1.tar.gz
+    curl -O http://google-api-python-client.googlecode.com/files/google-api-python-client-1.1.tar.gz
 
 Set up the library in `compute_engine_cluster_for_hadoop` directory.
 
@@ -234,7 +255,7 @@ Download httplib2-0.8.tar.gz from
 [download page](https://code.google.com/p/httplib2/downloads/list).
 or by the following command.
 
-    wget https://httplib2.googlecode.com/files/httplib2-0.8.tar.gz
+    curl -O https://httplib2.googlecode.com/files/httplib2-0.8.tar.gz
 
 Set up the library in `compute_engine_cluster_for_hadoop` directory.
 
@@ -249,7 +270,7 @@ Download python-gflags-2.0.tar.gz from
 [download page](http://code.google.com/p/python-gflags/downloads/list).
 or by the following command.
 
-    wget http://python-gflags.googlecode.com/files/python-gflags-2.0.tar.gz
+    curl -O http://python-gflags.googlecode.com/files/python-gflags-2.0.tar.gz
 
 Set up the library in `compute_engine_cluster_for_hadoop` directory.
 
@@ -267,7 +288,7 @@ Download mock-1.0.1.tar.gz from
 [download page](https://pypi.python.org/pypi/mock#downloads).
 or by the following command.
 
-    wget https://pypi.python.org/packages/source/m/mock/mock-1.0.1.tar.gz
+    curl -O https://pypi.python.org/packages/source/m/mock/mock-1.0.1.tar.gz
 
 Set up the library in `compute_engine_cluster_for_hadoop` directory.
 
@@ -308,7 +329,7 @@ Google Compute Engine instances can download them to set up Hadoop.
 * Set up firewall in Google Compute Engine network to allow users to access
 Hadoop Web consoles.
 
-'setup' must be performed only once per combination of Google Compute Engine
+'setup' must be performed at least once per combination of Google Compute Engine
 project and Google Cloud Storage bucket.
 'setup' may safely be run repeatedly for the same
 Google Compute Engine project and/or Google Cloud Storage bucket.
@@ -416,7 +437,7 @@ Example:
         --mapper-count 5  \
         --reducer-count 1
 
-##### Tear down cluster
+##### Shut down cluster
 
 'shutdown' subcommand deletes all instances in the Hadoop cluster.
 

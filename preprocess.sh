@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+declare -r LOCAL_TMP_DIR=$1 ; shift
 declare -r PROJECT=$1 ; shift
 declare -r TMP_CLOUD_STORAGE=$1 ; shift
 
-declare -r HADOOP_DIR=hadoop-1.0.*
-declare -r KEY_DIR=generated_files/ssh-key
-
-declare -r JAVA_PACKAGE=openjdk-6-jre*_amd64.deb
+declare -r HADOOP=hadoop-1.0.4
+declare -r GENERATED_FILES_DIR=generated_files
+declare -r KEY_DIR=$LOCAL_TMP_DIR/$GENERATED_FILES_DIR/ssh-key
+declare -r DEB_PACKAGE_DIR=$LOCAL_TMP_DIR/deb_packages
 
 function die() {
   echo 1>&2
@@ -38,7 +39,7 @@ mkdir -p $KEY_DIR
 ssh-keygen -t rsa -P '' -f $KEY_DIR/id_rsa || die "Failed to create SSH key."
 
 # Upload Hadoop package and JRE package to Google Cloud Storage
-gsutil cp $HADOOP_DIR.tar.gz $JAVA_PACKAGE $TMP_CLOUD_STORAGE/ ||  \
+gsutil -m cp -R $LOCAL_TMP_DIR/$HADOOP.tar.gz $DEB_PACKAGE_DIR $TMP_CLOUD_STORAGE/ ||  \
     die "Failed to copy Hadoop and Java packages to "  \
         "Cloud Storage $TMP_CLOUD_STORAGE/"
 

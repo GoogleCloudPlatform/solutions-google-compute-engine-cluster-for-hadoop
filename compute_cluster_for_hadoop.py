@@ -24,7 +24,7 @@ import sys
 
 import oauth2client
 
-from gce_cluster import GceCluster
+import gce_cluster
 
 
 class ComputeClusterForHadoop(object):
@@ -33,22 +33,22 @@ class ComputeClusterForHadoop(object):
   @staticmethod
   def SetUp(flags):
     """Set up environment for Hadoop on Compute."""
-    GceCluster(flags).EnvironmentSetUp()
+    gce_cluster.GceCluster(flags).EnvironmentSetUp()
 
   @staticmethod
   def Start(flags):
     """Starts Google Compute Engine cluster with Hadoop set up."""
-    GceCluster(flags).StartCluster()
+    gce_cluster.GceCluster(flags).StartCluster()
 
   @staticmethod
   def ShutDown(flags):
     """Deletes all instances included in the Hadoop cluster."""
-    GceCluster(flags).TeardownCluster()
+    gce_cluster.GceCluster(flags).TeardownCluster()
 
   @staticmethod
   def MapReduce(flags):
     """Starts MapReduce job."""
-    GceCluster(flags).StartMapReduce()
+    gce_cluster.GceCluster(flags).StartMapReduce()
 
   def __init__(self):
     self._parser = argparse.ArgumentParser()
