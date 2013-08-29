@@ -130,7 +130,7 @@ Set up Instruction
 ##### Download Hadoop package
 
 Download Hadoop 1.0.4 package (hadoop-1.0.4.tar.gz) from one of
-[Apache Hadoop mirror sites](http://hadoop.apache.org/releases.html#Download)
+[Apache Hadoop mirror sites](http://archive.apache.org/dist/hadoop/core/)
 
 Put the downloaded package to the root directory of this sample
 (`compute_engine_cluster_for_hadoop`), the same directory as hadoop-1.0.4.patch.
