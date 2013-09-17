@@ -121,6 +121,12 @@ click the IP address of an arbitrary DataNode.
 directory contains whitespace.  Please download the sample to the path
 that doesn't include any whitespaces.
 
+* Without additional security consideration, which falls outside the scope
+of this sample application, Hadoop's Web UI is open to public.  Some resources
+on the Web are:
+    * [Authentication for Hadoop HTTP web-consoles](http://hadoop.apache.org/docs/stable/HttpAuthentication.html)
+    * [Google Compute Engine: Setting Up VPN Gateways](https://developers.google.com/compute/docs/networking#settingupvpn)
+
 
 Set up Instruction
 ------------------
@@ -129,26 +135,30 @@ Set up Instruction
 
 ##### Download Hadoop package
 
-Download Hadoop 1.0.4 package (hadoop-1.0.4.tar.gz) from one of
-[Apache Hadoop mirror sites](http://archive.apache.org/dist/hadoop/core/)
+Download Hadoop 1.2.1 package (hadoop-1.2.1.tar.gz) from one of
+[Apache Hadoop mirror sites](http://www.apache.org/dyn/closer.cgi/hadoop/common/)
+or from [Apache Hadoop archives](http://archive.apache.org/dist/hadoop/core/).
 
 Put the downloaded package to the root directory of this sample
-(`compute_engine_cluster_for_hadoop`), the same directory as hadoop-1.0.4.patch.
+(`compute_engine_cluster_for_hadoop`), the same directory as hadoop-1.2.1.patch.
 Download can be performed from your Web browser and the file can be copied
 to the working directory.  Alternatively, command line tools, such as `curl`
 or `wget` may be used.
 
-    curl -O http://archive.apache.org/dist/hadoop/core/hadoop-1.0.4/hadoop-1.0.4.tar.gz
+    curl -O http://archive.apache.org/dist/hadoop/core/hadoop-1.2.1/hadoop-1.2.1.tar.gz
 
 ##### Customize Hadoop configuration and re-package
 
-Apply hadoop-1.0.4.patch to customize Hadoop configuration.
+Apply hadoop-1.2.1.patch to customize Hadoop configuration.
 From `compute_engine_cluster_for_hadoop` directory,
 execute the following commands.
 
-    tar zxf hadoop-1.0.4.tar.gz
-    patch -p0 < hadoop-1.0.4.patch
-    tar zcf hadoop-1.0.4.tar.gz hadoop-1.0.4
+    tar zxf hadoop-1.2.1.tar.gz
+    patch -p0 < hadoop-1.2.1.patch
+    tar zcf hadoop-1.2.1.tar.gz hadoop-1.2.1
+
+Hadoop configurations can be modified after the patch is applied in the above
+steps so as to include the custom configurations.
 
 ### Download Open JDK and Dependent Packages
 

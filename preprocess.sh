@@ -17,7 +17,7 @@ declare -r LOCAL_TMP_DIR=$1 ; shift
 declare -r PROJECT=$1 ; shift
 declare -r TMP_CLOUD_STORAGE=$1 ; shift
 
-declare -r HADOOP=hadoop-1.0.4
+declare -r HADOOP=hadoop-1.2.1
 declare -r GENERATED_FILES_DIR=generated_files
 declare -r KEY_DIR=$LOCAL_TMP_DIR/$GENERATED_FILES_DIR/ssh-key
 declare -r DEB_PACKAGE_DIR=$LOCAL_TMP_DIR/deb_packages

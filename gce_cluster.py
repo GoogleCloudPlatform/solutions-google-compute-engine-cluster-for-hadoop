@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Copyright 2013 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,7 +62,7 @@ class GceCluster(object):
   CLIENT_ID = '{{{{ client_id }}}}'
   CLIENT_SECRET = '{{{{ client_secret }}}}'
 
-  DEFAULT_ZONE = 'us-central2-a'
+  DEFAULT_ZONE = 'us-central1-a'
   DEFAULT_IMAGE = ('projects/debian-cloud/global/images/'
                    'debian-7-wheezy-v20130723')
   DEFAULT_MACHINE_TYPE = 'n1-highcpu-4-d'

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # Copyright 2013 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,7 +105,7 @@ class GceClusterTest(unittest.TestCase):
 
     GceCluster(argparse.Namespace(
         project='project-hoge', bucket='bucket-fuga',
-        machinetype='', image='', zone='', num_workers=2,
+        machinetype='', image='', zone='us-central2-a', num_workers=2,
         command='')).StartCluster()
 
     # Make sure internal calls are made with expected order with

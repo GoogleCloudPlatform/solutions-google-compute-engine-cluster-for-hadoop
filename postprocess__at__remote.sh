@@ -17,7 +17,7 @@ declare -r TMP_CLOUD_STORAGE=$1 ; shift
 declare -r MASTER_NAME=$1 ; shift
 
 declare -r TMP_DIR=/tmp/hadoop_package
-declare -r HADOOP_DIR=hadoop-1.0.*
+declare -r HADOOP_DIR=hadoop-*
 declare -r GENERATED_FILES_DIR=generated_files
 declare -r HADOOP_HOME=/home/hadoop
 
