@@ -18,8 +18,7 @@ declare -r PROJECT=$1 ; shift
 declare -r TMP_CLOUD_STORAGE=$1 ; shift
 
 declare -r HADOOP=hadoop-1.2.1
-declare -r GENERATED_FILES_DIR=generated_files
-declare -r KEY_DIR=$LOCAL_TMP_DIR/$GENERATED_FILES_DIR/ssh-key
+declare -r KEY_DIR=$LOCAL_TMP_DIR/ssh-key
 declare -r DEB_PACKAGE_DIR=$LOCAL_TMP_DIR/deb_packages
 
 function die() {
@@ -31,7 +30,7 @@ function die() {
   exit 1
 }
 
-# Generage key pair
+# Generate key pair for SSH for hadoop user.
 if [ -d $KEY_DIR ] ; then
   rm -rf $KEY_DIR
 fi
@@ -39,7 +38,8 @@ mkdir -p $KEY_DIR
 ssh-keygen -t rsa -P '' -f $KEY_DIR/id_rsa || die "Failed to create SSH key."
 
 # Upload Hadoop package and JRE package to Google Cloud Storage
-gsutil -m cp -R $LOCAL_TMP_DIR/$HADOOP.tar.gz $DEB_PACKAGE_DIR $TMP_CLOUD_STORAGE/ ||  \
+gsutil -m cp -R $LOCAL_TMP_DIR/$HADOOP.tar.gz $DEB_PACKAGE_DIR  \
+    $TMP_CLOUD_STORAGE/ ||  \
     die "Failed to copy Hadoop and Java packages to "  \
         "Cloud Storage $TMP_CLOUD_STORAGE/"
 

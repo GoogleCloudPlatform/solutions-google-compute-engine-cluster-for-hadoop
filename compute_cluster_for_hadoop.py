@@ -115,6 +115,10 @@ class ComputeClusterForHadoop(object):
     parser_start.add_argument(
         '--command', default='',
         help='Additional command to run on each instance.')
+    parser_start.add_argument(
+        '--external-ip', choices=['all', 'master'], default='all',
+        help=('Indicates which instance has external IP addresses. '
+              '["all" or "master"] (default "all")'))
 
   def _AddShutdownSubcommand(self):
     """Sets up parameters for 'shutdown' subcommand."""

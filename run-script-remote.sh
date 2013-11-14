@@ -32,15 +32,18 @@ if [[ "$1" != "--" ]] ; then
 fi
 shift
 
-gcutil --project=$PROJECT push --zone=$ZONE $HOST $(dirname $0)/$SCRIPT /tmp ||  \
+gcutil --project=$PROJECT push --ssh_arg -oStrictHostKeyChecking=no  \
+    --zone=$ZONE $HOST $(dirname $0)/$SCRIPT /tmp ||  \
     die "Failed to push script $SCRIPT to $HOST"
 
 if [ -n "$AS_USER" ] ; then
-  gcutil --project=$PROJECT ssh --zone=$ZONE $HOST sudo bash -c  \
+  gcutil --project=$PROJECT ssh --zone=$ZONE  \
+      --ssh_arg "-o StrictHostKeyChecking=no" $HOST sudo bash -c  \
       "\"chmod a+rx /tmp/$SCRIPT && ulimit -n 32768  \
       && sudo -u $AS_USER /tmp/$SCRIPT $@\""
 else
-  gcutil --project=$PROJECT ssh --zone=$ZONE $HOST /tmp/$SCRIPT $@
+  gcutil --project=$PROJECT ssh --zone=$ZONE  \
+      --ssh_arg "-o StrictHostKeyChecking=no" $HOST /tmp/$SCRIPT $@
 fi
 
 exit $?

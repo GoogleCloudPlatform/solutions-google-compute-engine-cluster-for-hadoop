@@ -67,6 +67,7 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
       self.assertEqual('project-name', flags.project)
       self.assertEqual('bucket-name', flags.bucket)
       self.assertEqual(10, flags.num_workers)
+      self.assertEqual('all', flags.external_ip)
       mock_cluster.return_value.StartCluster.assert_called_once_with()
 
   def testStart_DefaultClusterSize(self):
@@ -81,6 +82,7 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
       self.assertEqual('project-foo', flags.project)
       self.assertEqual('bucket-bar', flags.bucket)
       self.assertEqual(5, flags.num_workers)
+      self.assertEqual('all', flags.external_ip)
       mock_cluster.return_value.StartCluster.assert_called_once_with()
 
   def testStart_OptionalParams(self):
@@ -89,7 +91,8 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
       hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
       hadoop_cluster.ParseArgumentsAndExecute([
           'start', 'project-name', 'bucket-name', '--prefix', 'fuga',
-          '--zone', 'piyo', '--command', '"additional command"'])
+          '--zone', 'piyo', '--command', '"additional command"',
+          '--external-ip=master'])
 
       self.assertEqual(1, mock_cluster.call_count)
       flags = self._GetFlags(mock_cluster)
@@ -99,6 +102,7 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
       self.assertEqual('fuga', flags.prefix)
       self.assertEqual('piyo', flags.zone)
       self.assertEqual('"additional command"', flags.command)
+      self.assertEqual('master', flags.external_ip)
       mock_cluster.return_value.StartCluster.assert_called_once_with()
 
   def testStart_Prefix(self):
@@ -138,6 +142,16 @@ class ComputeClusterForHadoopTest(unittest.TestCase):
       self.assertRaises(SystemExit,
                         hadoop_cluster.ParseArgumentsAndExecute,
                         ['start', 'project-hoge'])
+
+  def testStart_InvalidExternalIp(self):
+    """Start sub-command unit test with no bucket option."""
+    with mock.patch('gce_cluster.GceCluster'):
+      # Fails to execute sub-command.
+      hadoop_cluster = compute_cluster_for_hadoop.ComputeClusterForHadoop()
+      self.assertRaises(SystemExit,
+                        hadoop_cluster.ParseArgumentsAndExecute,
+                        ['start', 'project-piyo', 'bucket-bar',
+                         '--external-ip', 'foo'])
 
   def testShutdown(self):
     """Shutdown sub-command unit test."""

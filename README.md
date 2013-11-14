@@ -23,40 +23,40 @@ limitations under the License.
 Disclaimer
 ----------
 
-This sample application is not an official Google product.
+The application is not an official Google product.
 
 
 Summary
 -------
 
-This sample application sets up Google Compute Engine instances as
-a Hadoop cluster and executes MapReduce tasks.
+The application sets up Google Compute Engine instances as a Hadoop cluster
+and executes MapReduce tasks.
 
-The purpose of this sample is to demonstrate how to leverage Google
+The purpose of the application is to demonstrate how to leverage Google
 Compute Engine for parallel processing with MapReduce on Hadoop.
 
-The sample is not meant to maintain a persistent Hadoop cluster.
-Because this sample uses ephemeral disks as storage for the Hadoop cluster,
+The application is not meant to maintain a persistent Hadoop cluster.
+Because the application uses scratch disks as storage for the Hadoop cluster,
 **all data on the Hadoop cluster instances, including data in
 HDFS (Hadoop Distributed FileSystem), will be lost**
 when the Hadoop cluster is torn down.  Important data, such as input and
 output of MapReduce must be kept in persistent storage,
 such as [Google Cloud Storage](https://developers.google.com/storage/).
 
-The sample takes advantage of MapReduce tasks to parallelize the copy of
+The application takes advantage of MapReduce tasks to parallelize the copy of
 input and output of MapReduce between Google Cloud Storage and HDFS.
 
 
 Prerequisites
 -------------
 
-This sample assumes Google Cloud Storage and Google Compute Engine services
-are enabled from the
-[Google APIs Console](https://code.google.com/apis/console/).
-The sample requires sufficient Google Compute Engine quota to run
-a Hadoop cluster.
+The application assumes
+[Google Cloud Storage](https://developers.google.com/storage/docs/signup) and
+[Google Compute Engine](https://developers.google.com/compute/docs/signup)
+services are enabled on the project.  The application requires sufficient
+Google Compute Engine quota to run a Hadoop cluster.
 
-The sample uses
+The application uses
 [gsutil](https://developers.google.com/storage/docs/gsutil) and
 [gcutil](https://developers.google.com/compute/docs/gcutil/),
 command line tools for Google Cloud Storage and Google Compute Engine
@@ -66,16 +66,16 @@ environment variable.
 
 ### gcutil
 
-This sample internally uses gcutil to perform file transfer and remote
-command execution from the machine where the sample is executed, and
+The application internally uses gcutil to perform file transfer and remote
+command execution from the machine where the application is executed, and
 Google Compute Engine instances.  So it's important to set up gcutil
 in an expected way.
 
 ##### Default project
 
-Default project of gcutil must be set to the project where Hadoop cluster
-is started.  In this way, `hadoop-shell.sh` can be used to log in
-to Hadoop master, and use `hadooop` command there.
+The default project of gcutil must be set to the project where the Hadoop
+cluster is started.  In this way, `hadoop-shell.sh` can be used to log in
+to Hadoop master, and use `hadoop` command there.
 Run the following command to
 [set gcutil default project](https://developers.google.com/compute/docs/gcutil/#project).
 
@@ -83,14 +83,15 @@ Run the following command to
 
 ##### SSH key
 
-In order for the sample to execute remote commands automatically, gcutil must
-be allowed to connect to Google Compute Engine instances without passphrase.
+In order for the application to execute remote commands automatically, gcutil
+must be allowed to connect to Google Compute Engine instances with an empty
+passphrase.
 
 If gcutil has never been executed, please
 [run it](https://developers.google.com/compute/docs/hello_world#addvm)
 to configure SSH key.  Make sure to set empty passphrase for SSH key.
 
-If SSH key is created earlier with passphrase, the sample fails to start
+If an SSH key with a passphrase already exists, the application fails to start
 Hadoop cluster, asking for manual passphrase entry from within the automated
 script.
 If this happens, rename (or remove) the SSH key from the system.
@@ -102,11 +103,11 @@ a new SSH key without passphrase.
 
 ### Environment
 
-This sample application runs with Python 2.7.
+The application runs with Python 2.7.
 It's tested on Mac OS X and Linux.
 
-Alternatively, a Google Compute Engine instance can be used to run this sample,
-which works as a controller of the Hadoop cluster.
+Alternatively, a Google Compute Engine instance can be used to run the
+application, which works as a controller of the Hadoop cluster.
 
 
 Known Issues
@@ -117,12 +118,18 @@ Known Issues
 from Web UI, go to the live node list from the "Live Nodes" link, and
 click the IP address of an arbitrary DataNode.
 
-* The script does not work properly if the path to the sample application
-directory contains whitespace.  Please download the sample to the path
+* The script does not work properly if the path to the application directory
+contains whitespace.  Please download the application to a path
 that doesn't include any whitespaces.
 
+* The application creates a file named `.hadoop_on_compute.credentials`
+(hidden file) under the home directory of the user to cache OAuth2 information.
+It is automatically created the first time access is authorized by the user.
+In case incorrect information is cached, leading to Google Compute Engine API
+access failure, removal of the file allows redoing the authentication.
+
 * Without additional security consideration, which falls outside the scope
-of this sample application, Hadoop's Web UI is open to public.  Some resources
+of the application, Hadoop's Web UI is open to public.  Some resources
 on the Web are:
     * [Authentication for Hadoop HTTP web-consoles](http://hadoop.apache.org/docs/stable/HttpAuthentication.html)
     * [Google Compute Engine: Setting Up VPN Gateways](https://developers.google.com/compute/docs/networking#settingupvpn)
@@ -130,6 +137,10 @@ on the Web are:
 
 Set up Instruction
 ------------------
+
+Setting up the environment should be done in the directory of the application
+("root directory of the application").  In the following instruction, commands
+are expected to run from the root directory.
 
 ### Prepare Hadoop package
 
@@ -139,8 +150,8 @@ Download Hadoop 1.2.1 package (hadoop-1.2.1.tar.gz) from one of
 [Apache Hadoop mirror sites](http://www.apache.org/dyn/closer.cgi/hadoop/common/)
 or from [Apache Hadoop archives](http://archive.apache.org/dist/hadoop/core/).
 
-Put the downloaded package to the root directory of this sample
-(`compute_engine_cluster_for_hadoop`), the same directory as hadoop-1.2.1.patch.
+Put the downloaded package in the root directory of the application, where
+hadoop-1.2.1.patch exists.
 Download can be performed from your Web browser and the file can be copied
 to the working directory.  Alternatively, command line tools, such as `curl`
 or `wget` may be used.
@@ -150,8 +161,7 @@ or `wget` may be used.
 ##### Customize Hadoop configuration and re-package
 
 Apply hadoop-1.2.1.patch to customize Hadoop configuration.
-From `compute_engine_cluster_for_hadoop` directory,
-execute the following commands.
+From the root directory of the application, execute the following commands.
 
     tar zxf hadoop-1.2.1.tar.gz
     patch -p0 < hadoop-1.2.1.patch
@@ -162,12 +172,13 @@ steps so as to include the custom configurations.
 
 ### Download Open JDK and Dependent Packages
 
-The sample uses [Open JDK](http://openjdk.java.net/) as Java runtime
+The application uses [Open JDK](http://openjdk.java.net/) as Java runtime
 environment.  Open JDK Java Runtime Environment is distributed under
 [GNU Public License version 2](http://www.gnu.org/licenses/gpl-2.0.html).
 User must agree to the license to use Open JDK.
 
-Create a directory called "deb_packages" under the root directory of the sample.
+Create a directory called "deb_packages" under the root directory of this
+application.
 
 Download amd64 package of openjdk-6-jre-headless, and architecture-common
 package of openjdk-6-jre-lib from the following sites.
@@ -197,47 +208,46 @@ Put the downloaded packages into the `deb_packages` directory.
 ### Prepare Google Cloud Storage bucket
 
 Create a Google Cloud Storage bucket, from which Google Compute Engine instance
-downloads Hadoop package and the generated files for Hadoop set up.
+downloads Hadoop and other packages.
 
-This can be done by either:
+This can be done by one of:
 
-* Using existing bucket.
-* Creating new bucket from
-[Google Cloud Storage Web UI](https://storage.cloud.google.com/).
-* Creating new bucket by
+* Using an existing bucket.
+* Creating a new bucket from the "Cloud Storage" page on the project page of
+[Cloud Console](https://cloud.google.com/console)
+* Creating a new bucket by
 [gsutil command line tool](https://developers.google.com/storage/docs/gsutil).
 `gsutil mb gs://<bucket name>`
 
 Note this bucket can be different from the bucket where MapReduce input and
 output are located.
-Make sure to create the bucket in the same project as Google Compute Engine
-for Hadoop cluster.
+Make sure to create the bucket in the same Google Cloud project as that
+specified in the "Default project" section above.
 
 ### Create client ID and client secret
 
-Client ID and client secret are required by OAuth2 authorization
-to identify the sample application.  It is required in order for the
-application to access Google API (in this example, Google Compute Engine API)
-on behalf of the user.
+Client ID and client secret are required by OAuth2 authorization to identify
+the application.  It is required in order for the application to access
+Google API (in this case, Google Compute Engine API) on behalf of the user.
 
-Client ID and client secret can be set up from
-[API Access](https://code.google.com/apis/console/#access)
-page of Google APIs Console.  Click "Create another client ID..." button
-to create client ID.
+Client ID and client secret can be set up from "APIs & auth" menu of
+[Cloud Console](https://cloud.google.com/console) of the project.
+Choose "Registered apps" submenu, and click the red button at the top labeled
+"REGISTER APP" to add new client ID and client secret for the application.
 
-Choose "Installed Application" as application type, and set application type
-to "Other".
+Enter a name to easily distinguish the application, choose "Native" platform,
+and click "Register" button.
 
 Replace `CLIENT_ID` and `CLIENT_SECRET` values in `GceCluster` class in
-gce\_cluster.py with the actual values from Google APIs Console.
+gce\_cluster.py with the values created in the above step.
 
     CLIENT_ID = '12345....................com'
     CLIENT_SECRET = 'abcd..........'
 
 ### Download and set up Python libraries
 
-The following libraries are required by the sample, and here is the example of
-how to set up libraries in the sample application directory.
+The following instructions explain how to set up the additional libraries for
+the application.
 
 ##### Google Client API
 
@@ -250,7 +260,7 @@ or by the following command.
 
     curl -O http://google-api-python-client.googlecode.com/files/google-api-python-client-1.1.tar.gz
 
-Set up the library in `compute_engine_cluster_for_hadoop` directory.
+Set up the library in the root directory of the application.
 
     tar zxf google-api-python-client-1.1.tar.gz
     ln -s google-api-python-client-1.1/apiclient .
@@ -267,7 +277,7 @@ or by the following command.
 
     curl -O https://httplib2.googlecode.com/files/httplib2-0.8.tar.gz
 
-Set up the library in `compute_engine_cluster_for_hadoop` directory.
+Set up the library in the root directory of the application.
 
     tar zxf httplib2-0.8.tar.gz
     ln -s httplib2-0.8/python2/httplib2 .
@@ -282,7 +292,7 @@ or by the following command.
 
     curl -O http://python-gflags.googlecode.com/files/python-gflags-2.0.tar.gz
 
-Set up the library in `compute_engine_cluster_for_hadoop` directory.
+Set up the library in the root directory of the application.
 
     tar zxf python-gflags-2.0.tar.gz
     ln -s python-gflags-2.0/gflags.py .
@@ -292,7 +302,7 @@ Set up the library in `compute_engine_cluster_for_hadoop` directory.
 
 [mock](https://pypi.python.org/pypi/mock) is mocking library for Python.
 It will be included in Python as standard package from Python 3.3.
-However, since this sample application uses Python 2.7, it needs to be set up.
+However, since the application uses Python 2.7, it needs to be set up.
 
 Download mock-1.0.1.tar.gz from
 [download page](https://pypi.python.org/pypi/mock#downloads).
@@ -300,23 +310,23 @@ or by the following command.
 
     curl -O https://pypi.python.org/packages/source/m/mock/mock-1.0.1.tar.gz
 
-Set up the library in `compute_engine_cluster_for_hadoop` directory.
+Set up the library in the root directory of the application.
 
     tar zxf mock-1.0.1.tar.gz
     ln -s mock-1.0.1/mock.py .
 
 
-Usage of this Sample Application
---------------------------------
+Usage of the Application
+------------------------
 
 ### compute\_cluster\_for\_hadoop.py
 
-`compute_cluster_for_hadoop.py` is the main script of the sample.
+`compute_cluster_for_hadoop.py` is the main script of the application.
 It sets up Google Compute Engine and Google Cloud Storage environment
 for Hadoop cluster, starts up Hadoop cluster, initiates MapReduce jobs
 and tears down the cluster.
 
-##### Show usage
+#### Show usage
 
     ./compute_cluster_for_hadoop.py --help
 
@@ -329,7 +339,7 @@ Please refer to the following usages for available options.
     ./compute_cluster_for_hadoop.py mapreduce --help
     ./compute_cluster_for_hadoop.py shutdown --help
 
-##### Set up environment
+#### Set up environment
 
 'setup' subcommand sets up environment.
 
@@ -340,21 +350,21 @@ Google Compute Engine instances can download them to set up Hadoop.
 Hadoop Web consoles.
 
 'setup' must be performed at least once per combination of Google Compute Engine
-project and Google Cloud Storage bucket.
-'setup' may safely be run repeatedly for the same
-Google Compute Engine project and/or Google Cloud Storage bucket.
-Project ID can be found on "Overview" page of
-[Google APIs Console](https://code.google.com/apis/console/),
-and bucket name is the name of Google Cloud Storage bucket
-without "gs://" prefix.
+project and Google Cloud Storage bucket.  'setup' may safely be run repeatedly
+for the same Google Compute Engine project and/or Google Cloud Storage bucket.
+The project ID can be found in the "PROJECT ID" column of the project list of
+the [Cloud Console](https://cloud.google.com/console) or at the top of
+the project's page on Cloud Console.
+Bucket name is the name of Google Cloud Storage bucket without the
+"gs://" prefix.
 
 Execute the following command to set up the environment.
 
     ./compute_cluster_for_hadoop.py setup <project ID> <bucket name>
 
-##### Start cluster
+#### Start cluster
 
-'start' subcommand starts Hadoop cluster.  By default, it starts 6 instances,
+'start' subcommand starts Hadoop cluster.  By default, it starts 6 instances:
 one master and 5 worker instances.  In other words, the default value
 of the number of workers is 5.
 
@@ -398,7 +408,30 @@ repeated following message.  Please update to the latest version of gcutil.
 If an error occurs resulting in Hadoop cluster set-up failure, delete existing
 instances from Google Compute Engine console, fix the issues and restart.
 
-##### Start MapReduce
+##### External IP Addresses on Worker Instances
+
+By default, all Google Compute Engine instances created by the application are
+equipped with external IP addresses.
+
+A Hadoop cluster with no external IP addresses on worker instances can be
+started by passing `--external-ip=master` option to 'start' subcommand.
+
+    ./compute_cluster_for_hadoop.py start <project ID> <bucket name> ... --external-ip=master
+
+Quota and security are some of the reasons to set up cluster without external IP
+addresses.  Note the master instance always has an external IP address, so that
+MapReduce tasks can be started.
+
+If a Google Compute Engine instance is created without an external IP address,
+it cannot access the Internet directly, including accessing Google Cloud
+Storage.  When `--external-ip` option is set to "master", however, the
+application sets up routing and NAT via the master instance, so that workers
+can still access the Internet transparently.  Note that all traffic to the
+Internet from the workers, then, goes through the single master instance.
+When the workers are created with external IP addresses (the default), their
+traffic goes directly to the Internet.
+
+#### Start MapReduce
 
 'mapreduce' subcommand starts MapReduce task on the Hadoop cluster.
 It requires project name and bucket for the temporary use.  The temporary
@@ -433,7 +466,7 @@ If mapper or reducer is not specified, the step (mapper or reducer) copies
 input to output.  Specifying 0 as `--reducer-count` will skip shuffle and
 reduce phases, making the output of mapper the final output of MapReduce.
 
-`sample` directory in this sample application includes sample mapper and
+`sample` directory in the application includes sample mapper and
 reducer, that counts the words' occurrence in the input files in shortest
 to longest and in alphabetical order in the same length of the word.
 
@@ -447,20 +480,19 @@ Example:
         --mapper-count 5  \
         --reducer-count 1
 
-##### Shut down cluster
+#### Shut down cluster
 
 'shutdown' subcommand deletes all instances in the Hadoop cluster.
 
     ./compute_cluster_for_hadoop.py shutdown <project ID> [--prefix <prefix>]
 
-In this sample application, Google Compute Engine instances use
-ephemeral disks for storage.  Therefore, **all files on Hadoop cluster,
-including HDFS, are deleted** when the cluster is shut down.
-Since this sample application is not meant to maintain Hadoop cluster
-as persistent storage, important files must be kept in persistent storage,
-such as Google Cloud Storage.
+In the application, Google Compute Engine instances use scratch disks for
+storage.  Therefore, **all files on Hadoop cluster, including HDFS, are
+deleted** when the cluster is shut down.  Since the application is not meant
+to maintain Hadoop cluster as persistent storage, important files must be kept
+in persistent storage, such as Google Cloud Storage.
 
-##### Prefix and zone
+#### Prefix and zone
 
 `start`, `mapreduce` and `shutdown` subcommands take string value as
 "--prefix" parameter.
@@ -495,7 +527,7 @@ Example:
 
 ### Unit tests
 
-The sample has 3 Python files, `compute_cluster_for_hadoop.py`, `gce_cluster.py`
+The application has 3 Python files, `compute_cluster_for_hadoop.py`, `gce_cluster.py`
 and `gce_api.py`.
 They have corresponding unit tests, `compute_cluster_for_hadoop_test.py`,
 `gce_cluster_test.py` and `gce_api_test.py` respectively.

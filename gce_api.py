@@ -22,6 +22,7 @@ import os
 import os.path
 
 import apiclient.discovery
+import apiclient.errors
 import httplib2
 
 import oauth2client.client
@@ -84,6 +85,17 @@ class GceApi(object):
     return apiclient.discovery.build(
         'compute', self.COMPUTE_ENGINE_API_VERSION, http=authorized_http)
 
+  @staticmethod
+  def IsNotFoundError(http_error):
+    """Checks if HttpError reason was 'not found'.
+
+    Args:
+      http_error: HttpError
+    Returns:
+      True if the error reason was 'not found', otherwise False.
+    """
+    return http_error.resp['status'] == '404'
+
   @classmethod
   def _ResourceUrlFromPath(cls, path):
     """Creates full resource URL from path."""
@@ -91,25 +103,29 @@ class GceApi(object):
         cls.COMPUTE_ENGINE_API_VERSION, path)
 
   def _ResourceUrl(self, resource_type, resource_name,
-                   zoning=ResourceZoning.ZONE):
+                   zoning=ResourceZoning.ZONE, project=None):
     """Creates URL to indicate Google Compute Engine resource.
 
     Args:
       resource_type: Resource type.
       resource_name: Resource name.
       zoning: Which zone type the resource belongs to.
+      project: Overrides project for the resource.
     Returns:
       URL in string to represent the resource.
     """
+    if not project:
+      project = self._project
+
     if zoning == ResourceZoning.NONE:
       resource_path = 'projects/%s/%s/%s' % (
-          self._project, resource_type, resource_name)
+          project, resource_type, resource_name)
     elif zoning == ResourceZoning.GLOBAL:
       resource_path = 'projects/%s/global/%s/%s' % (
-          self._project, resource_type, resource_name)
+          project, resource_type, resource_name)
     else:
       resource_path = 'projects/%s/zones/%s/%s/%s' % (
-          self._project, self._zone, resource_type, resource_name)
+          project, self._zone, resource_type, resource_name)
 
     return self._ResourceUrlFromPath(resource_path)
 
@@ -145,9 +161,15 @@ class GceApi(object):
       Google Compute Engine instance resource.  None if error.
       https://developers.google.com/compute/docs/reference/v1beta14/instances
     """
-    return self.GetApi().instances().get(
-        project=self._project, zone=self._zone,
-        instance=instance_name).execute()
+    try:
+      return self.GetApi().instances().get(
+          project=self._project, zone=self._zone,
+          instance=instance_name).execute()
+    except apiclient.errors.HttpError as e:
+      if self.IsNotFoundError(e):
+        logging.warning('Get instance: %s not found', instance_name)
+        return None
+      raise
 
   def ListInstances(self, filter_string=None):
     """Lists instances that matches filter condition.
@@ -166,7 +188,8 @@ class GceApi(object):
 
   def CreateInstance(self, instance_name, machine_type, image,
                      startup_script='', service_accounts=None,
-                     metadata=None):
+                     external_ip=True, metadata=None, tags=None,
+                     can_ip_forward=False, kernel=None):
     """Creates Google Compute Engine instance.
 
     Args:
@@ -177,8 +200,15 @@ class GceApi(object):
       startup_script: Content of start up script to run on the new instance.
       service_accounts: List of scope URLs to give to the instance with
           the service account.
+      external_ip: Boolean value to indicate whether the new instance has
+          an external IP address.
       metadata: Additional key-value pairs in dictionary to add as
           instance metadata.
+      tags: String list of tags to attach to the new instance.
+      can_ip_forward: Boolean to indicate if the new instance can forward IP
+          packets.
+      kernel: Kernel name of the new instance.  If not specified, the default
+          kernel for the image is used.
     Returns:
       Boolean to indicate whether the instance creation was successful.
     """
@@ -198,16 +228,11 @@ class GceApi(object):
                 },
             ],
         },
+        'canIpForward': can_ip_forward,
         'networkInterfaces': [
             {
                 'kind': 'compute#instanceNetworkInterface',
-                'accessConfigs': [
-                    {
-                        'kind': 'compute#accessConfig',
-                        'type': 'ONE_TO_ONE_NAT',
-                        'name': 'External NAT',
-                    }
-                ],
+                'accessConfigs': [],
                 'network': self._ResourceUrl('networks', 'default',
                                              zoning=ResourceZoning.GLOBAL)
             },
@@ -221,10 +246,27 @@ class GceApi(object):
         ],
     }
 
+    # Request external IP address if necessary.
+    if external_ip:
+      params['networkInterfaces'][0]['accessConfigs'].append({
+          'kind': 'compute#accessConfig',
+          'type': 'ONE_TO_ONE_NAT',
+          'name': 'External NAT',
+      })
+
     # Add metadata.
     if metadata:
       for key, value in metadata.items():
         params['metadata']['items'].append({'key': key, 'value': value})
+
+    # Add tags.
+    if tags:
+      params['tags'] = {'items': tags}
+
+    # Add kernel.
+    if kernel:
+      params['kernel'] = self._ResourceUrl(
+          'kernels', kernel, zoning=ResourceZoning.GLOBAL, project='google')
 
     operation = self.GetApi().instances().insert(
         project=self._project, zone=self._zone, body=params).execute()
@@ -240,9 +282,64 @@ class GceApi(object):
     Returns:
       Boolean to indicate whether the instance deletion was successful.
     """
-    operation = self.GetApi().instances().delete(
-        project=self._project, zone=self._zone,
-        instance=instance_name).execute()
+    try:
+      operation = self.GetApi().instances().delete(
+          project=self._project, zone=self._zone,
+          instance=instance_name).execute()
+      return self._ParseOperation(
+          operation, 'Instance deletion: %s' % instance_name)
+    except apiclient.errors.HttpError as e:
+      if self.IsNotFoundError(e):
+        logging.warning('Delete instance: %s not found', instance_name)
+        return False
+      raise
 
-    return self._ParseOperation(
-        operation, 'Instance deletion: %s' % instance_name)
+  def AddRoute(self, route_name, next_hop_instance,
+               network='default', dest_range='0.0.0.0/0',
+               tags=None, priority=100):
+    """Adds route to the specified instance.
+
+    Args:
+      route_name: Name of the new route.
+      next_hop_instance: Instance name of the next hop.
+      network: Network to which to add the route.
+      dest_range: Destination IP range for the new route.
+      tags: List of strings of instance tags.
+      priority: Priority of the route.
+    Returns:
+      Boolean to indicate whether the route creation was successful.
+    """
+    params = {
+        'kind': 'compute#route',
+        'name': route_name,
+        'destRange': dest_range,
+        'priority': priority,
+        'network': self._ResourceUrl(
+            'networks', network, zoning=ResourceZoning.GLOBAL),
+        'nextHopInstance': self._ResourceUrl('instances', next_hop_instance),
+    }
+
+    if tags:
+      params['tags'] = tags
+
+    operation = self.GetApi().routes().insert(
+        project=self._project, body=params).execute()
+    return self._ParseOperation(operation, 'Route creation: %s' % route_name)
+
+  def DeleteRoute(self, route_name):
+    """Deletes route by name.
+
+    Args:
+      route_name: Name of the route to delete.
+    Returns:
+      Boolean to indicate whether the route deletion was successful.
+    """
+    try:
+      operation = self.GetApi().routes().delete(
+          project=self._project, route=route_name).execute()
+      return self._ParseOperation(operation, 'Route deletion: %s' % route_name)
+    except apiclient.errors.HttpError as e:
+      if self.IsNotFoundError(e):
+        logging.warning('Delete route: %s not found', route_name)
+        return False
+      raise

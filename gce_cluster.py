@@ -21,7 +21,6 @@ import logging
 import os
 import os.path
 import subprocess
-import tarfile
 import time
 
 import gce_api
@@ -64,16 +63,33 @@ class GceCluster(object):
 
   DEFAULT_ZONE = 'us-central1-a'
   DEFAULT_IMAGE = ('projects/debian-cloud/global/images/'
-                   'debian-7-wheezy-v20130723')
+                   'debian-7-wheezy-v20131014')
+  NAT_ENABLED_KERNEL = 'gce-v20130813'
   DEFAULT_MACHINE_TYPE = 'n1-highcpu-4-d'
   COMPUTE_STARTUP_SCRIPT = 'startup-script.sh'
 
   LOCAL_TMP_DIR = '.'
-  GENERATED_FILES_DIR_NAME = 'generated_files'
-  GENERATED_FILES_DIR = os.path.join(LOCAL_TMP_DIR, GENERATED_FILES_DIR_NAME)
+  SSH_KEY_DIR_NAME = 'ssh-key'
+  PRIVATE_KEY_NAME = 'id_rsa'
+  PUBLIC_KEY_NAME = PRIVATE_KEY_NAME + '.pub'
+  PRIVATE_KEY_FILE = os.path.join(
+      LOCAL_TMP_DIR, SSH_KEY_DIR_NAME, PRIVATE_KEY_NAME)
+  PUBLIC_KEY_FILE = os.path.join(
+      LOCAL_TMP_DIR, SSH_KEY_DIR_NAME, PUBLIC_KEY_NAME)
 
   MASTER_NAME = 'hm'
   WORKER_NAME_CORE = 'hw'
+  WORKER_TAG_CORE = 'hadoop-workers'
+  ROUTE_NAME_CORE = 'hadoop-worker-route'
+
+  INSTANCE_ROLES = {
+      'master': ['NameNode', 'JobTracker'],
+      'worker': ['DataNode', 'TaskTracker'],
+  }
+
+  INSTANCE_STATUS_CHECK_INTERVAL = 15
+  MAX_MASTER_STATUS_CHECK_TIMES = 40  # Waits up to 10min (15s x 40)
+  MAX_WORKERS_CHECK_TIMES = 120  # Waits up to 30min (15s x 120)
 
   def __init__(self, flags):
     self.instances = []  # instance names
@@ -88,14 +104,40 @@ class GceCluster(object):
           flags.prefix, self.WORKER_NAME_CORE)
       self.worker_name_pattern = '^%s-%s-\\d+$' % (
           flags.prefix, self.WORKER_NAME_CORE)
+      self.worker_tag = '%s-%s' % (flags.prefix, self.WORKER_TAG_CORE)
+      self.route_name = '%s-%s' % (flags.prefix, self.ROUTE_NAME_CORE)
     else:
       self.master_name = self.MASTER_NAME
       self.worker_name_template = self.WORKER_NAME_CORE + '-%03d'
       self.worker_name_pattern = '^%s-\\d+$' % self.WORKER_NAME_CORE
+      self.worker_tag = self.WORKER_TAG_CORE
+      self.route_name = self.ROUTE_NAME_CORE
 
     self.zone = getattr(self.flags, 'zone', None) or self.DEFAULT_ZONE
     self.startup_script = None
+    self.private_key = None
+    self.public_key = None
     logging.debug('Current directory: %s', os.getcwd())
+
+  def EnvironmentSetUp(self):
+    """Sets up Hadoop-on-Compute environment.
+
+    Must be run once per project/Cloud Storage bucket pair.
+
+    Raises:
+      EnvironmentSetUpError: Script failed.
+    """
+    command = ' '.join([MakeScriptRelativePath('preprocess.sh'),
+                        self.LOCAL_TMP_DIR, self.flags.project,
+                        self.tmp_storage])
+    logging.debug('Environment set-up command: %s', command)
+    if subprocess.call(command, shell=True):
+      # Non-zero return code indicates an error.
+      raise EnvironmentSetUpError('Environment set up failed.')
+
+  def _WorkerName(self, index):
+    """Returns Hadoop worker name with specified worker index."""
+    return self.worker_name_template % index
 
   def _GetApi(self):
     if not self.api:
@@ -104,37 +146,85 @@ class GceCluster(object):
                                 self.flags.project, self.zone)
     return self.api
 
-  def _StartInstance(self, instance_name):
-    """Starts single Compute Engine instance."""
+  def _StartInstance(self, instance_name, role):
+    """Starts single Compute Engine instance.
+
+    Args:
+      instance_name: Name of the instance.
+      role: Instance role name.  Must be one of the keys of INSTANCE_ROLES.
+    Raises:
+      ClusterSetUpError: Role name was invalid.
+    """
     logging.info('Starting instance: %s', instance_name)
+
+    # Load start-up script.
     if not self.startup_script:
       self.startup_script = open(
           MakeScriptRelativePath(self.COMPUTE_STARTUP_SCRIPT)).read()
+
+    # Load SSH keys.
+    if not self.private_key:
+      self.private_key = open(self.PRIVATE_KEY_FILE).read()
+    if not self.public_key:
+      self.public_key = open(self.PUBLIC_KEY_FILE).read()
+
+    metadata = {
+        'num-workers': self.flags.num_workers,
+        'hadoop-master': self.master_name,
+        'hadoop-worker-template': self.worker_name_template,
+        'tmp-cloud-storage': self.tmp_storage,
+        'custom-command': self.flags.command,
+        'hadoop-private-key': self.private_key,
+        'hadoop-public-key': self.public_key,
+        'worker-external-ip': int(self.flags.external_ip == 'all'),
+    }
+
+    if role not in self.INSTANCE_ROLES:
+      raise ClusterSetUpError('Invalid instance role name: %s' % role)
+    for command in self.INSTANCE_ROLES[role]:
+      metadata[command] = 1
+
+    # Assign an external IP to the master all the time, and to the worker
+    # with external IP address.
+    external_ip = False
+    if role == 'master' or self.flags.external_ip == 'all':
+      external_ip = True
+
+    can_ip_forward = False
+    kernel = None
+    if role == 'master' and self.flags.external_ip == 'master':
+      # Enable IP forwarding and use NAT-enabled kernel on master with
+      # workers without external IP addresses.
+      can_ip_forward = True
+      kernel = self.NAT_ENABLED_KERNEL
+
+    # Assign a tag to workers for routing.
+    tags = None
+    if role == 'worker':
+      tags = [self.worker_tag]
+
     self._GetApi().CreateInstance(
         instance_name,
         self.flags.machinetype or self.DEFAULT_MACHINE_TYPE,
         self.flags.image or self.DEFAULT_IMAGE,
         startup_script=self.startup_script,
         service_accounts=[
-            'https://www.googleapis.com/auth/devstorage.full_control'])
+            'https://www.googleapis.com/auth/devstorage.full_control'],
+        external_ip=external_ip,
+        metadata=metadata, tags=tags,
+        can_ip_forward=can_ip_forward,
+        kernel=kernel)
     self.instances += [instance_name]
 
-  def _SpawnPostprocessScript(self, instance_name):
-    """Runs postprocess script on remote instance.
-
-    Args:
-      instance_name: Name of the instance.
-    Returns:
-      Popen object of the postprocess script process.
-    """
-    postprocess_command = ' '.join([
-        MakeScriptRelativePath('run-script-remote.sh'),
-        self.flags.project or '""', self.zone or '""',
-        instance_name, 'postprocess__at__remote.sh', '--',
-        self.tmp_storage, self.master_name,
-        self.flags.command])
-    logging.debug('Postprocess command: %s', postprocess_command)
-    return subprocess.Popen(postprocess_command, shell=True)
+  def _CheckInstanceRunning(self, instance_name):
+    """Checks if instance status is 'RUNNING'."""
+    instance_info = self._GetApi().GetInstance(instance_name)
+    if not instance_info:
+      logging.info('Instance %s has not yet started', instance_name)
+      return False
+    instance_status = instance_info.get('status', None)
+    logging.info('Instance %s status: %s', instance_name, instance_status)
+    return True if instance_status == 'RUNNING' else False
 
   def _CheckSshReady(self, instance_name):
     """Checks if the instance is ready to connect via SSH.
@@ -148,185 +238,107 @@ class GceCluster(object):
       Boolean to indicate whether the instance is ready to SSH.
     """
     command = ('gcutil ssh --project=%s --zone=%s '
-               '--ssh_arg "-o ConnectTimeout=10" %s exit') % (
-                   self.flags.project, self.zone, instance_name)
+               '--ssh_arg "-o ConnectTimeout=10" '
+               '--ssh_arg "-o StrictHostKeyChecking=no" '
+               '%s exit') % (self.flags.project, self.zone, instance_name)
     logging.debug('SSH availability check command: %s', command)
     if subprocess.call(command, shell=True):
       # Non-zero return code indicates an error.
-      logging.info('SSH is not yet ready for %s', instance_name)
+      logging.info('SSH is not yet ready on %s', instance_name)
       return False
     else:
       return True
 
-  def _WaitForInstancesReady(self):
-    """Waits for all Compte Engine instances to get ready.
+  def _MasterSshChecker(self):
+    """Returns generator that indicates whether master is ready to SSH.
 
-    When instance is ready (in RUNNING status), starts postprocess script
-    in the instance.  Postprocess scripts are spawned as background process,
-    so that the scripts for different instances run simultaneously.  This
-    funciton waits for postprocess scripts in all instances to finish.
+    Yields:
+      False until master is ready to SSH.
+    """
+    while not self._CheckInstanceRunning(self.master_name):
+      yield False
+    while not self._CheckSshReady(self.master_name):
+      yield False
+
+  def _WaitForMasterSsh(self):
+    """Waits until the master instance is ready to SSH.
 
     Raises:
-      ClusterSetUpError: Postprocess script process finished with error.
+      ClusterSetUpError: Master set-up timed out.
     """
-    postprocesses = []
-    # Key: name of instance that hasn't run postprocess script.
-    # Value: indicates if instance's status is RUNNING, therefore ready to
-    # run postprocess when SSH is ready.
-    not_yet_ready = dict.fromkeys(self.instances, False)
+    wait_counter = 0
+    for _ in self._MasterSshChecker():
+      if wait_counter >= self.MAX_MASTER_STATUS_CHECK_TIMES:
+        logging.critical('Hadoop master set up time out')
+        raise ClusterSetUpError('Hadoop master set up time out')
+      logging.info('Waiting for the master instance to get ready...')
+      time.sleep(self.INSTANCE_STATUS_CHECK_INTERVAL)
+      wait_counter += 1
 
-    unchanged_count = 0
-    while not_yet_ready:
-      logging.info('Waiting for instances to start')
-      time.sleep(5)
-      unchanged_count += 1
-      managed_instances = self._GetApi().ListInstances(
-          'name eq "%s"' % '|'.join(self.instances))
-      waiting_instance_status = []
-      for instance in managed_instances:
-        instance_name = instance['name']
-        if instance_name in not_yet_ready:
-          if instance['status'] == 'RUNNING':
-            if not_yet_ready[instance_name]:
-              if self._CheckSshReady(instance_name):
-                # Start postprocess script as background process.
-                # If status is 'RUNNING' but sshd is not yet ready,
-                # _CheckSshReady() returns False, in which case, the instance
-                # status is added to waiting_instance_status below,
-                # and SSH readiness is checked in the next cycle.
-                postprocesses.append(
-                    self._SpawnPostprocessScript(instance_name))
-                # Clear from not_yet_ready list.
-                del not_yet_ready[instance_name]
-                # Postprocess started.  Reset unchanged count.
-                unchanged_count = 0
-            else:
-              # Instead of running post process immediately, give one more
-              # cycle after status becomes RUNNING for sshd to warm up.
-              not_yet_ready[instance_name] = True
-              # Status changed.  Reset unchanged count.
-              unchanged_count = 0
-          waiting_instance_status.append({
-              'name': instance_name, 'status': instance['status']})
-      for instance in waiting_instance_status:
-        logging.info('%s: %s', instance['name'], instance['status'])
+  def _WorkerStatusChecker(self):
+    """Returns generator that indicates how many workers are RUNNING.
 
-      # No situation change for 10 minutes.
-      if unchanged_count > 120:
-        logging.critical('Hadoop cluster instances did not start up normally.')
-        raise ClusterSetUpError('Failed to start cluster instances.')
+    The returned generator finishes iteration when all workers are in
+    RUNNING status.
 
-    # Wait for all postprocess scripts to finish.
-    still_running = True
-    unchanged_count = 0
-    while still_running:
-      logging.info('Waiting for postprocess to finish on all instances.')
-      time.sleep(5)
-      unchanged_count += 1
-      still_running = False
-      for p in postprocesses:
-        if p.returncode is None:
-          # The postprocess hadn't finished last time.  Check if it's finished.
-          returncode = p.poll()
-          if returncode is not None:
-            # Postprocess is finished.  Check the finish status.
-            if returncode:
-              # Non-zero return code indicates an error.
-              logging.error('Postprocess finished with error.  Return code: %d',
-                            p.returncode)
-              raise ClusterSetUpError('Postprocess script finished abnormally.')
-            # Postprocess finished.  Reset unchanged count.
-            unchanged_count = 0
-          else:
-            # This indicates at least one postprocess is still running.
-            still_running = True
-      # No situation change for 10 minutes.
-      if unchanged_count > 120:
-        logging.critical('Postprocess did not finish normally.')
-        raise ClusterSetUpError('Postprocess script did not finish.')
-
-  def _PrepareHostsFile(self):
-    """Creates /etc/hosts file to be propageted.
-
-    The generated hosts file includes all instances in the same Hadoop cluster.
+    Yields:
+      Number of RUNNING workers.
     """
-    f = open(os.path.join(self.GENERATED_FILES_DIR, 'hosts'), 'w')
-    for instance_name in self.instances:
-      instance = self._GetApi().GetInstance(instance_name)
-      internal_ip = instance['networkInterfaces'][0]['networkIP']
-      f.write('%s %s %s.localdomain\n' % (
-          internal_ip, instance_name, instance_name))
-    f.close()
+    workers = [self._WorkerName(i) for i in xrange(self.flags.num_workers)]
+    while True:
+      running_workers = 0
+      for worker_name in workers:
+        if self._CheckInstanceRunning(worker_name):
+          running_workers += 1
+      if running_workers == self.flags.num_workers:
+        return
+      yield running_workers
 
-  def EnvironmentSetUp(self):
-    """Sets up Hadoop-on-Compute environment.
-
-    Must be run once per project/Cloud Storage bucket pair.
+  def _WaitForWorkersReady(self):
+    """Waits until all workers are in RUNNING status.
 
     Raises:
-      EnvironmentSetUpError: Script failed.
+      ClusterSetUpError: Workers set-up timed out.
     """
-    command = ' '.join([MakeScriptRelativePath('preprocess.sh'),
-                        self.LOCAL_TMP_DIR, self.flags.project,
-                        self.tmp_storage])
-    logging.debug('Enviroment set-up command: %s', command)
-    if subprocess.call(command, shell=True):
-      # Non-zero return code indicates an error.
-      raise EnvironmentSetUpError('Environment set up failed.')
-
-  def _Postprocess(self):
-    """Performs cluster configuration after all instances are started.
-
-    Raises:
-      ClusterSetUpError: Generated file archive is not copied correctly.
-    """
-    self._PrepareHostsFile()
-    # Archive generaged_files and upload to Cloud Storage
-    generated_files_archive = self.GENERATED_FILES_DIR + '.tar.gz'
-    tgz = tarfile.open(generated_files_archive, 'w|gz')
-    tgz.add(self.GENERATED_FILES_DIR, arcname=self.GENERATED_FILES_DIR_NAME)
-    tgz.close()
-    genfile_copy_command = 'gsutil cp %(filename)s %(gcs_dir)s/' % {
-        'filename': generated_files_archive,
-        'gcs_dir': self.tmp_storage
-    }
-    logging.debug('Generated file copy command: %s', genfile_copy_command)
-    if subprocess.call(genfile_copy_command, shell=True):
-      # Non-zero return code indicates an error.
-      raise ClusterSetUpError('Generated file copy error.')
-
-    self._WaitForInstancesReady()
-
-  def _WorkerName(self, index):
-    """Returns Hadoop worker name with spedified worker index."""
-    return self.worker_name_template % index
-
-  def _StartMaster(self):
-    """Starts Hadoop master Compute Engine instance."""
-    self._StartInstance(self.master_name)
-    f = open(os.path.join(self.GENERATED_FILES_DIR, 'masters'), 'w')
-    f.write(self.master_name + '\n')
-    f.close()
-
-  def _StartWorkers(self):
-    """Starts Hadoop worker Compute Engine instances."""
-    f = open(os.path.join(self.GENERATED_FILES_DIR, 'slaves'), 'w')
-    for i in range(self.flags.num_workers):
-      name = self._WorkerName(i)
-      self._StartInstance(name)
-      f.write(name + '\n')
-    f.close()
+    wait_counter = 0
+    for running_workers in self._WorkerStatusChecker():
+      logging.info('%d out of %d workers RUNNING',
+                   running_workers, self.flags.num_workers)
+      if wait_counter >= self.MAX_WORKERS_CHECK_TIMES:
+        logging.critical('Hadoop worker set up time out')
+        raise ClusterSetUpError('Hadoop worker set up time out')
+      logging.info('Waiting for the worker instances to start...')
+      time.sleep(self.INSTANCE_STATUS_CHECK_INTERVAL)
+      wait_counter += 1
+    logging.info('All workers are RUNNING now.')
 
   def StartCluster(self):
     """Starts Hadoop cluster on Compute Engine."""
-    self._StartMaster()
-    self._StartWorkers()
-    self._Postprocess()
-    self._StartHadoopDaemons()
+    # Create a route if no external IP addresses are assigned to the workers.
+    if self.flags.external_ip == 'all':
+      self._GetApi().DeleteRoute(self.route_name)
+    else:
+      self._GetApi().AddRoute(self.route_name, self.master_name,
+                              tags=[self.worker_tag])
+
+    # Start master instance.
+    self._StartInstance(self.master_name, role='master')
+    self._WaitForMasterSsh()
+
+    # Start worker instances.
+    for i in xrange(self.flags.num_workers):
+      self._StartInstance(self._WorkerName(i), role='worker')
+
+    self._WaitForWorkersReady()
+    self._ShowHadoopInformation()
 
   def TeardownCluster(self):
     """Deletes Compute Engine instances with likely names."""
-    instances = self._GetApi().ListInstances('name eq "%s|%s"' %(
+    # Delete route that might have been created at start up time.
+    self._GetApi().DeleteRoute(self.route_name)
+
+    # Delete instances.
+    instances = self._GetApi().ListInstances('name eq "%s|%s"' % (
         self.master_name, self.worker_name_pattern))
     for instance in instances:
       instance_name = instance['name']
@@ -355,12 +367,13 @@ class GceCluster(object):
       # Non-zero return code indicates an error.
       raise RemoteExecutionError('Remote execution error')
 
-  def _StartHadoopDaemons(self):
-    """Starts Hadoop deamons (HDFS and MapRecuce)."""
-    self._StartScriptAtMaster('start-hadoop__at__master.sh')
+  def _ShowHadoopInformation(self):
+    """Shows Hadoop master information."""
     instance = self._GetApi().GetInstance(self.master_name)
     external_ip = instance['networkInterfaces'][0]['accessConfigs'][0]['natIP']
     logging.info('')
+    logging.info('Hadoop cluster is set up, and workers will be eventually '
+                 'recognized by the master.')
     logging.info('HDFS Console  http://%s:50070/', external_ip)
     logging.info('MapReduce Console  http://%s:50030/', external_ip)
     logging.info('')

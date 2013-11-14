@@ -56,8 +56,8 @@ class GceClusterTest(unittest.TestCase):
         mock_gce_api_class.return_value.CreateInstance,
         'CreateInstance')
     parent_mock.attach_mock(
-        mock_gce_api_class.return_value.ListInstances,
-        'ListInstances')
+        mock_gce_api_class.return_value.GetInstance,
+        'GetInstance')
     parent_mock.attach_mock(mock_tarfile_open, 'tarfile_open')
     parent_mock.attach_mock(mock_subprocess_call, 'subprocess_call')
     parent_mock.attach_mock(mock_popen, 'Popen')
@@ -65,11 +65,14 @@ class GceClusterTest(unittest.TestCase):
     parent_mock.attach_mock(mock_builtin_open, 'open')
     parent_mock.attach_mock(mock_sleep, 'sleep')
 
-    mock_gce_api_class.return_value.ListInstances.return_value = [
-        {'name': 'hm', 'status': 'RUNNING'},
-        {'name': 'hw-000', 'status': 'RUNNING'},
-        {'name': 'hw-001', 'status': 'RUNNING'},
-    ]
+    mock_gce_api_class.return_value.GetInstance.return_value = {
+        'status': 'RUNNING',
+        'networkInterfaces': [{
+            'accessConfigs': [{
+                'natIP': '1.2.3.4',
+            }],
+        }],
+    }
 
     return parent_mock
 
@@ -106,161 +109,97 @@ class GceClusterTest(unittest.TestCase):
     GceCluster(argparse.Namespace(
         project='project-hoge', bucket='bucket-fuga',
         machinetype='', image='', zone='us-central2-a', num_workers=2,
-        command='')).StartCluster()
+        command='', external_ip='all')).StartCluster()
 
     # Make sure internal calls are made with expected order with
     # expected arguments.
     method_calls = parent_mock.method_calls.__iter__()
-    call = method_calls.next()
-    # Open start up script for Compute Engine instance.
-    self.assertEqual('open', call[0])
-    self.assertRegexpMatches(call[1][0], 'startup-script\\.sh$')
     # Create GceApi.
     call = method_calls.next()
     self.assertEqual('GceApi', call[0])
+    # Open start up script for Compute Engine instance.
+    call = method_calls.next()
+    self.assertEqual('open', call[0])
+    self.assertRegexpMatches(call[1][0], 'startup-script\\.sh$')
+    # Open private key to pass to Compute Engine instance.
+    call = method_calls.next()
+    self.assertEqual('open', call[0])
+    self.assertRegexpMatches(call[1][0], 'id_rsa$')
+    # Open private key to pass to Compute Engine instance.
+    call = method_calls.next()
+    self.assertEqual('open', call[0])
+    self.assertRegexpMatches(call[1][0], 'id_rsa\\.pub$')
     # Create master instance.
     call = method_calls.next()
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hm', call[1][0])
-    # Create masters config file.
+    self.assertTrue(call[2]['external_ip'])
+    self.assertFalse(call[2]['can_ip_forward'])
+    # Check master status.
     call = method_calls.next()
-    self.assertEqual('open', call[0])
-    self.assertRegexpMatches(call[1][0], 'generated_files/masters$')
-    self.assertEqual('w', call[1][1])
-    # Create slaves config file.
+    self.assertEqual('GetInstance', call[0])
+    self.assertEqual('hm', call[1][0])
+    # Check if master is ready to SSH.
     call = method_calls.next()
-    self.assertEqual('open', call[0])
-    self.assertRegexpMatches(call[1][0], 'generated_files/slaves$')
-    self.assertEqual('w', call[1][1])
+    self.assertEqual('subprocess_call', call[0])
+    self.assertRegexpMatches(call[1][0], '^gcutil ssh')
     # Create worker instance #000.
     call = method_calls.next()
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hw-000', call[1][0])
+    self.assertTrue(call[2]['external_ip'])
+    self.assertFalse(call[2]['can_ip_forward'])
     # Create worker instance #001.
     call = method_calls.next()
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hw-001', call[1][0])
-    # Create hosts file.
+    self.assertTrue(call[2]['external_ip'])
+    self.assertFalse(call[2]['can_ip_forward'])
+    # Check worker 000's status
     call = method_calls.next()
-    self.assertEqual('open', call[0])
-    self.assertRegexpMatches(call[1][0], 'generated_files/hosts$')
-    self.assertEqual('w', call[1][1])
-    # Compress generated files to tar.gz.
+    self.assertEqual('GetInstance', call[0])
+    self.assertEqual('hw-000', call[1][0])
+    # Check worker 001's status
     call = method_calls.next()
-    self.assertEqual('tarfile_open', call[0])
-    self.assertRegexpMatches(call[1][0], 'generated_files\\.tar\\.gz$')
-    self.assertEqual('w|gz', call[1][1])
-    # Upload generated config files to Cloud Storage.
+    self.assertEqual('GetInstance', call[0])
+    self.assertEqual('hw-001', call[1][0])
+    # Get master's external IP address.
     call = method_calls.next()
-    self.assertEqual('subprocess_call', call[0])
-    self.assertRegexpMatches(
-        call[1][0],
-        '^gsutil cp .*generated_files\\.tar\\.gz '
-        'gs://bucket-fuga/mapreduce/tmp/$')
-    self.assertTrue(call[2]['shell'])
-    # Wait.
-    call = method_calls.next()
-    self.assertEqual('sleep', call[0])
-    # Check status of instances.
-    call = method_calls.next()
-    self.assertEqual('ListInstances', call[0])
-    self.assertEqual(
-        'name eq "hm|hw-000|hw-001"',
-        call[1][0])
-    # Wait at least one more time before SSH-check and postprocess.
-    call = method_calls.next()
-    self.assertEqual('sleep', call[0])
-    # Check status of instances.
-    call = method_calls.next()
-    self.assertEqual('ListInstances', call[0])
-    self.assertEqual(
-        'name eq "hm|hw-000|hw-001"',
-        call[1][0])
-    # SSH-check for master.
-    call = method_calls.next()
-    self.assertEqual('subprocess_call', call[0])
-    self.assertEqual(
-        'gcutil ssh --project=project-hoge --zone=us-central2-a '
-        '--ssh_arg "-o ConnectTimeout=10" hm exit',
-        call[1][0])
-    self.assertTrue(call[2]['shell'])
-    # Start postprocess on master.
-    call = method_calls.next()
-    self.assertEqual('Popen', call[0])
-    self.assertRegexpMatches(
-        call[1][0],
-        'run-script-remote.sh project-hoge us-central2-a hm '
-        'postprocess__at__remote.sh -- '
-        'gs://bucket-fuga/mapreduce/tmp hm')
-    self.assertTrue(call[2]['shell'])
-    # SSH-check for worker #000.
-    call = method_calls.next()
-    self.assertEqual('subprocess_call', call[0])
-    self.assertEqual(
-        'gcutil ssh --project=project-hoge --zone=us-central2-a '
-        '--ssh_arg "-o ConnectTimeout=10" hw-000 exit',
-        call[1][0])
-    self.assertTrue(call[2]['shell'])
-    # Start postprocess on worker #000.
-    call = method_calls.next()
-    self.assertEqual('Popen', call[0])
-    self.assertRegexpMatches(
-        call[1][0],
-        'run-script-remote.sh project-hoge us-central2-a hw-000 '
-        'postprocess__at__remote.sh -- '
-        'gs://bucket-fuga/mapreduce/tmp hm')
-    self.assertTrue(call[2]['shell'])
-    # SSH-check for worker #001.
-    call = method_calls.next()
-    self.assertEqual('subprocess_call', call[0])
-    self.assertEqual(
-        'gcutil ssh --project=project-hoge --zone=us-central2-a '
-        '--ssh_arg "-o ConnectTimeout=10" hw-001 exit',
-        call[1][0])
-    self.assertTrue(call[2]['shell'])
-    # Start postprocess on worker #001.
-    call = method_calls.next()
-    self.assertEqual('Popen', call[0])
-    self.assertRegexpMatches(
-        call[1][0],
-        'run-script-remote.sh project-hoge us-central2-a hw-001 '
-        'postprocess__at__remote.sh -- '
-        'gs://bucket-fuga/mapreduce/tmp hm')
-    self.assertTrue(call[2]['shell'])
-    # Wait for postprocess.
-    call = method_calls.next()
-    self.assertEqual('sleep', call[0])
+    self.assertEqual('GetInstance', call[0])
+    self.assertEqual('hm', call[1][0])
+    # End of call list.
+    self.assertRaises(StopIteration, method_calls.next)
 
-    # Make sure for all postprocess to finish.  poll() 3 times.
-    call = method_calls.next()
-    self.assertEqual('poll', call[0])
-    call = method_calls.next()
-    self.assertEqual('poll', call[0])
-    call = method_calls.next()
-    self.assertEqual('poll', call[0])
-
-    # Start Hadoop daemons on master.
-    call = method_calls.next()
-    self.assertEqual('subprocess_call', call[0])
-    self.assertRegexpMatches(
-        call[1][0],
-        'run-script-remote.sh project-hoge us-central2-a hm '
-        'start-hadoop__at__master.sh hadoop')
-    self.assertTrue(call[2]['shell'])
-
-  def testStartCluster_SubprocessCallError(self):
-    """Unit test of StartCluster() with subprocess.call() error."""
+  def testStartCluster_NoExternalIp(self):
+    """Unit test of StartCluster() with no external IP addresses for workers."""
     parent_mock = self._SetUpMocksForClusterStart()
 
-    # Set subprocess.call() mock to return 1 (error return code).
-    parent_mock.subprocess_call.return_value = 1
+    GceCluster(argparse.Namespace(
+        project='project-hoge', bucket='bucket-fuga',
+        machinetype='', image='', zone='us-central2-a', num_workers=2,
+        command='', external_ip='master')).StartCluster()
 
-    self.assertRaises(
-        gce_cluster.ClusterSetUpError,
-        gce_cluster.GceCluster(argparse.Namespace(
-            project='project-hoge', bucket='bucket-fuga',
-            machinetype='', image='', zone='', num_workers=2,
-            command='')).StartCluster)
+    # Just check parameters of CreateInstance.
+    # Master instance.
+    call = parent_mock.method_calls[4]
+    self.assertEqual('CreateInstance', call[0])
+    self.assertEqual('hm', call[1][0])
+    self.assertTrue(call[2]['external_ip'])
+    self.assertTrue(call[2]['can_ip_forward'])
+
+    # Worker 000.
+    call = parent_mock.method_calls[7]
+    self.assertEqual('CreateInstance', call[0])
+    self.assertEqual('hw-000', call[1][0])
+    self.assertFalse(call[2]['external_ip'])
+    self.assertFalse(call[2]['can_ip_forward'])
+
+    # Worker 001.
+    call = parent_mock.method_calls[8]
+    self.assertEqual('CreateInstance', call[0])
+    self.assertEqual('hw-001', call[1][0])
+    self.assertFalse(call[2]['external_ip'])
+    self.assertFalse(call[2]['can_ip_forward'])
 
   def testStartCluster_InstanceStatusError(self):
     """Unit test of StartCluster() instance status error.
@@ -271,44 +210,20 @@ class GceClusterTest(unittest.TestCase):
     parent_mock = self._SetUpMocksForClusterStart()
 
     # Set hw-000's status to forever STAGING.
-    parent_mock.GceApi.return_value.ListInstances.return_value = [
-        {'name': 'hm', 'status': 'RUNNING'},
-        {'name': 'hw-000', 'status': 'STAGING'},
-        {'name': 'hw-001', 'status': 'RUNNING'},
-    ]
+    parent_mock.GceApi.return_value.GetInstance.return_value = {
+        'status': 'STAGING',
+    }
 
     self.assertRaises(
         gce_cluster.ClusterSetUpError,
         gce_cluster.GceCluster(argparse.Namespace(
             project='project-hoge', bucket='bucket-fuga',
             machinetype='', image='', zone='', num_workers=2,
-            command='')).StartCluster)
+            command='', external_ip='all')).StartCluster)
 
     # Ensure ListInstances() and sleep() are called more than 120 times.
-    self.assertLess(120, parent_mock.ListInstances.call_count)
-    self.assertLess(120, parent_mock.sleep.call_count)
-
-  def testStartCluster_PostprocessDidNotFinish(self):
-    """Unit test of StartCluster() with postprocess error.
-
-    This unit test simulates the situation where postprocess script doesn't
-    finish.  (poll() keeps returning None.)
-    """
-    parent_mock = self._SetUpMocksForClusterStart()
-
-    # Set return value of poll() to None (not yet finished).
-    parent_mock.poll.return_value = None
-
-    self.assertRaises(
-        gce_cluster.ClusterSetUpError,
-        gce_cluster.GceCluster(argparse.Namespace(
-            project='project-hoge', bucket='bucket-fuga',
-            machinetype='', image='', zone='', num_workers=2,
-            command='')).StartCluster)
-
-    self.assertEqual(2, parent_mock.ListInstances.call_count)
-    self.assertLess(360, parent_mock.poll.call_count)
-    self.assertLess(120, parent_mock.sleep.call_count)
+    self.assertEqual(41, parent_mock.GetInstance.call_count)
+    self.assertEqual(40, parent_mock.sleep.call_count)
 
   def testTeardownCluster(self):
     """Unit test of TeardownCluster()."""
