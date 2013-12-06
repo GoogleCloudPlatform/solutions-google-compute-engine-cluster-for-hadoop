@@ -41,7 +41,7 @@ class GceApi(object):
   """Google Client API wrapper for Google Compute Engine."""
 
   COMPUTE_ENGINE_SCOPE = 'https://www.googleapis.com/auth/compute'
-  COMPUTE_ENGINE_API_VERSION = 'v1beta15'
+  COMPUTE_ENGINE_API_VERSION = 'v1beta16'
 
   def __init__(self, name, client_id, client_secret, project, zone):
     """Constructor.
@@ -159,7 +159,7 @@ class GceApi(object):
       instance_name: Name of the instance to get information of.
     Returns:
       Google Compute Engine instance resource.  None if error.
-      https://developers.google.com/compute/docs/reference/v1beta14/instances
+      https://developers.google.com/compute/docs/reference/latest/instances
     """
     try:
       return self.GetApi().instances().get(
@@ -175,7 +175,7 @@ class GceApi(object):
     """Lists instances that matches filter condition.
 
     Format of filter string can be found in the following URL.
-    http://developers.google.com/compute/docs/reference/v1beta14/instances/list
+    http://developers.google.com/compute/docs/reference/latest/instances/list
 
     Args:
       filter_string: Filtering condition.
