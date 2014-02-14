@@ -158,8 +158,8 @@ class GceApiTest(unittest.TestCase):
                      execute.return_value,
                      instance_info)
 
-  def testListInstance_NoFilter(self):
-    """Unit test of ListInstance() without filter string."""
+  def testListInstances_NoFilter(self):
+    """Unit test of ListInstances() without filter string."""
     mock_api = mock.MagicMock(name='Mock Google Client API')
     self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.list.return_value.execute.return_value = {
@@ -175,8 +175,8 @@ class GceApiTest(unittest.TestCase):
      assert_called_once_with())
     self.assertEqual(['dummy', 'list'], instance_list)
 
-  def testListInstance_Filter(self):
-    """Unit test of ListInstance() with filter string."""
+  def testListInstances_Filter(self):
+    """Unit test of ListInstances() with filter string."""
     mock_api = mock.MagicMock(name='Mock Google Client API')
     self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
     mock_api.instances.return_value.list.return_value.execute.return_value = {
@@ -263,8 +263,8 @@ class GceApiTest(unittest.TestCase):
     """Unit test of DeleteInstance()."""
     mock_api = mock.MagicMock(name='Mock Google Client API')
     self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
-    mock_api.instances.return_value.insert.return_value.execute.return_value = {
-        'name': 'instance-name'
+    mock_api.instances.return_value.delete.return_value.execute.return_value = {
+        'status': 'RUNNING'
     }
 
     self.assertTrue(self.gce_api.DeleteInstance('instance-name'))
@@ -273,6 +273,114 @@ class GceApiTest(unittest.TestCase):
     mock_api.instances.return_value.delete.assert_called_once_with(
         project='project-name', zone='zone-name', instance='instance-name')
     (mock_api.instances.return_value.delete.return_value.execute.
+     assert_called_once_with())
+
+  def testGetDisk(self):
+    """Unit test of GetDisk()."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+
+    disk_info = self.gce_api.GetDisk('disk-name')
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.get.assert_called_once_with(
+        project='project-name', zone='zone-name', disk='disk-name')
+    (mock_api.disks.return_value.get.return_value.execute.
+     assert_called_once_with())
+    self.assertEqual(mock_api.disks.return_value.get.return_value.
+                     execute.return_value,
+                     disk_info)
+
+  def testListDisks_NoFilter(self):
+    """Unit test of ListDisks() without filter string."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+    mock_api.disks.return_value.list.return_value.execute.return_value = {
+        'items': ['dummy', 'list']
+    }
+
+    instance_list = self.gce_api.ListDisks()
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.list.assert_called_once_with(
+        project='project-name', zone='zone-name', filter=None)
+    (mock_api.disks.return_value.list.return_value.execute.
+     assert_called_once_with())
+    self.assertEqual(['dummy', 'list'], instance_list)
+
+  def testListInstance_Filter(self):
+    """Unit test of ListDisks() with filter string."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+    mock_api.disks.return_value.list.return_value.execute.return_value = {
+        'items': ['dummy', 'list']
+    }
+
+    instance_list = self.gce_api.ListDisks('filter condition')
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.list.assert_called_once_with(
+        project='project-name', zone='zone-name', filter='filter condition')
+    (mock_api.disks.return_value.list.return_value.execute.
+     assert_called_once_with())
+    self.assertEqual(['dummy', 'list'], instance_list)
+
+  def testCreateDisk_WithImage(self):
+    """Unit test of CreateDisk() with image."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+    mock_api.disks.return_value.insert.return_value.execute.return_value = {
+        'name': 'disk-name'
+    }
+
+    self.assertTrue(self.gce_api.CreateDisk(
+        'disk-name', image='path/to/image'))
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.insert.assert_called_once_with(
+        project='project-name', zone='zone-name', body=mock.ANY,
+        sourceImage='https://www.googleapis.com/compute/v1/path/to/image')
+    params = mock_api.disks.return_value.insert.call_args[1]['body']
+    self.assertEqual(10, int(params['sizeGb']))
+    self.assertEqual('disk-name', params['name'])
+    (mock_api.disks.return_value.insert.return_value.execute.
+     assert_called_once_with())
+
+  def testCreateDisk_WithSizeWithNoImage(self):
+    """Unit test of CreateDisk() with size."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+    mock_api.disks.return_value.insert.return_value.execute.return_value = {
+        'name': 'disk-name'
+    }
+
+    self.assertTrue(self.gce_api.CreateDisk(
+        'disk-name', size_gb=1234))
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.insert.assert_called_once_with(
+        project='project-name', zone='zone-name', body=mock.ANY,
+        sourceImage=None)
+    params = mock_api.disks.return_value.insert.call_args[1]['body']
+    self.assertEqual(1234, int(params['sizeGb']))
+    self.assertEqual('disk-name', params['name'])
+    (mock_api.disks.return_value.insert.return_value.execute.
+     assert_called_once_with())
+
+  def testDeleteDisk(self):
+    """Unit test of DeleteDisk()."""
+    mock_api = mock.MagicMock(name='Mock Google Client API')
+    self.gce_api.GetApi = mock.MagicMock(return_value=mock_api)
+    mock_api.disks.return_value.delete.return_value.execute.return_value = {
+        'status': 'RUNNING'
+    }
+
+    self.assertTrue(self.gce_api.DeleteDisk('disk-name'))
+
+    self.assertEqual(1, self.gce_api.GetApi.call_count)
+    mock_api.disks.return_value.delete.assert_called_once_with(
+        project='project-name', zone='zone-name', disk='disk-name')
+    (mock_api.disks.return_value.delete.return_value.execute.
      assert_called_once_with())
 
 

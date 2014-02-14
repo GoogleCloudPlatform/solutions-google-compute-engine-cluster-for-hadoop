@@ -36,11 +36,11 @@ The purpose of the application is to demonstrate how to leverage Google
 Compute Engine for parallel processing with MapReduce on Hadoop.
 
 The application is not meant to maintain a persistent Hadoop cluster.
-Because the application uses scratch disks as storage for the Hadoop cluster,
-**all data on the Hadoop cluster instances, including data in
+Because the application is designed to delete all disks at the deletion
+of the cluster, **all data on the Hadoop cluster instances, including data in
 HDFS (Hadoop Distributed FileSystem), will be lost**
-when the Hadoop cluster is torn down.  Important data, such as input and
-output of MapReduce must be kept in persistent storage,
+when the Hadoop cluster is torn down.  For persistent storage beyond
+the lifespan of the cluster, use external persistent storage,
 such as [Google Cloud Storage](https://developers.google.com/storage/).
 
 The application takes advantage of MapReduce tasks to parallelize the copy of
@@ -56,50 +56,61 @@ The application assumes
 services are enabled on the project.  The application requires sufficient
 Google Compute Engine quota to run a Hadoop cluster.
 
-The application uses
-[gsutil](https://developers.google.com/storage/docs/gsutil) and
-[gcutil](https://developers.google.com/compute/docs/gcutil/),
-command line tools for Google Cloud Storage and Google Compute Engine
-respectively.
-Make sure to have the latest version of these tools added to the PATH
-environment variable.
+### gcutil and gsutil
 
-### gcutil
+The application uses gcutil and gsutil, command line tools for
+Google Compute Engine and Google Cloud Storage respectively.
+The tools are distributed as a part of
+[Google Cloud SDK](https://developers.google.com/cloud/sdk/).
+Follow the instruction in the link to install them.
 
-The application internally uses gcutil to perform file transfer and remote
-command execution from the machine where the application is executed, and
-Google Compute Engine instances.  So it's important to set up gcutil
-in an expected way.
+##### Authenticaton and default project
 
-##### Default project
+After the installation of Cloud SDK, run the following command to authenticate,
+as instructed on the page.
 
-The default project of gcutil must be set to the project where the Hadoop
-cluster is started.  In this way, `hadoop-shell.sh` can be used to log in
-to Hadoop master, and use `hadoop` command there.
-Run the following command to
-[set gcutil default project](https://developers.google.com/compute/docs/gcutil/#project).
+    gcloud auth login
 
-    gcutil getproject --project=<project ID> --cache_flag_values
+The above command authenticates the user, and sets the default project.
+The default project must be set to the project where the Hadoop cluster will be
+deployed.  The project ID is shown at the top of the project's "Overview" page
+of the [Developers Console](https://cloud.google.com/console).
+
+The default project can be changed with the command:
+
+    gcloud config set project <project ID>
 
 ##### SSH key
 
-In order for the application to execute remote commands automatically, gcutil
-must be allowed to connect to Google Compute Engine instances with an empty
-passphrase.
+The application uses SSH to start MapReduce tasks, on the Hadoop cluster.
+In order for the application to execute remote commands automatically,
+gcutil must have an SSH key with an empty passphrase for Google Compute Engine
+instances.
 
-If gcutil has never been executed, please
-[run it](https://developers.google.com/compute/docs/hello_world#addvm)
-to configure SSH key.  Make sure to set empty passphrase for SSH key.
+gcutil uses its own
+[SSH key](https://developers.google.com/compute/docs/instances#sshkeys),
+and the key is stored in .ssh directory of the user's home directory as
+`$HOME/.ssh/google_compute_engine` (private key) and
+`$HOME/.ssh/google_compute_engine.pub` (public key).
 
-If an SSH key with a passphrase already exists, the application fails to start
-Hadoop cluster, asking for manual passphrase entry from within the automated
-script.
-If this happens, rename (or remove) the SSH key from the system.
+If the SSH key for gcutil doesn't already exist, it can be created with
+the command:
 
-    mv $HOME/.ssh/google_compute_engine $HOME/.ssh/google_compute_engine.bak
+    ssh-keygen -t rsa -q -f $HOME/.ssh/google_compute_engine
 
-After the rename of the SSH key, run gcutil again in the same way to create
-a new SSH key without passphrase.
+Alternatively, the SSH key for gcutil can be generated upon the creation of an
+instance.  The following command creates an instance, and an SSH key if it
+doesn't exist on the computer.
+
+    gcutil addinstance --zone us-central1-a --machine_type f1-micro  \
+        --image debian-7-wheezy <instance-name>
+
+The instance is created only to create an SSH key, and is safe to delete.
+
+    gcutil deleteinstance -f --delete_boot_pd <instance-name>
+
+If an SSH key with a passphrase already exists, the key files must be renamed
+or deleted before creating the SSH key with an empty passphrase.
 
 ### Environment
 
@@ -117,17 +128,14 @@ Known Issues
 "Browse the filesystem" link does not work.  In order to browse HDFS
 from Web UI, go to the live node list from the "Live Nodes" link, and
 click the IP address of an arbitrary DataNode.
-
 * The script does not work properly if the path to the application directory
 contains whitespace.  Please download the application to a path
 that doesn't include any whitespaces.
-
 * The application creates a file named `.hadoop_on_compute.credentials`
 (hidden file) under the home directory of the user to cache OAuth2 information.
 It is automatically created the first time access is authorized by the user.
 In case incorrect information is cached, leading to Google Compute Engine API
 access failure, removal of the file allows redoing the authentication.
-
 * Without additional security consideration, which falls outside the scope
 of the application, Hadoop's Web UI is open to public.  Some resources
 on the Web are:
@@ -214,7 +222,7 @@ This can be done by one of:
 
 * Using an existing bucket.
 * Creating a new bucket from the "Cloud Storage" page on the project page of
-[Cloud Console](https://cloud.google.com/console)
+[Developers Console](https://cloud.google.com/console)
 * Creating a new bucket by
 [gsutil command line tool](https://developers.google.com/storage/docs/gsutil).
 `gsutil mb gs://<bucket name>`
@@ -231,12 +239,13 @@ the application.  It is required in order for the application to access
 Google API (in this case, Google Compute Engine API) on behalf of the user.
 
 Client ID and client secret can be set up from "APIs & auth" menu of
-[Cloud Console](https://cloud.google.com/console) of the project.
-Choose "Registered apps" submenu, and click the red button at the top labeled
-"REGISTER APP" to add new client ID and client secret for the application.
+[Developers Console](https://cloud.google.com/console) of the project.
+Choose "Credentials" submenu, and click the red button at the top labeled
+"CREATE NEW CLIENT ID" to create a new pair of client ID and client secret
+for the application.
 
-Enter a name to easily distinguish the application, choose "Native" platform,
-and click "Register" button.
+Choose "Installed application" as "Application type", choose "Other" as
+"Installed application type" and click "Create Client ID" button.
 
 Replace `CLIENT_ID` and `CLIENT_SECRET` values in `GceCluster` class in
 gce\_cluster.py with the values created in the above step.
@@ -254,18 +263,18 @@ the application.
 [Google Client API](http://code.google.com/p/google-api-python-client/)
 is library to access various Google's services via API.
 
-Download google-api-python-client-1.1.tar.gz from
+Download google-api-python-client-1.2.tar.gz from
 [download page](http://code.google.com/p/google-api-python-client/downloads/list)
 or by the following command.
 
-    curl -O http://google-api-python-client.googlecode.com/files/google-api-python-client-1.1.tar.gz
+    curl -O http://google-api-python-client.googlecode.com/files/google-api-python-client-1.2.tar.gz
 
 Set up the library in the root directory of the application.
 
-    tar zxf google-api-python-client-1.1.tar.gz
-    ln -s google-api-python-client-1.1/apiclient .
-    ln -s google-api-python-client-1.1/oauth2client .
-    ln -s google-api-python-client-1.1/uritemplate .
+    tar zxf google-api-python-client-1.2.tar.gz
+    ln -s google-api-python-client-1.2/apiclient .
+    ln -s google-api-python-client-1.2/oauth2client .
+    ln -s google-api-python-client-1.2/uritemplate .
 
 ##### Httplib2
 
@@ -353,8 +362,8 @@ Hadoop Web consoles.
 project and Google Cloud Storage bucket.  'setup' may safely be run repeatedly
 for the same Google Compute Engine project and/or Google Cloud Storage bucket.
 The project ID can be found in the "PROJECT ID" column of the project list of
-the [Cloud Console](https://cloud.google.com/console) or at the top of
-the project's page on Cloud Console.
+the [Developers Console](https://cloud.google.com/console) or at the top of
+the project's page on Developers Console.
 Bucket name is the name of Google Cloud Storage bucket without the
 "gs://" prefix.
 
@@ -368,17 +377,27 @@ Execute the following command to set up the environment.
 one master and 5 worker instances.  In other words, the default value
 of the number of workers is 5.
 
-    ./compute_cluster_for_hadoop.py start <project ID> <bucket name> [number of workers] [--prefix <prefix>]
+    ./compute_cluster_for_hadoop.py start <project ID> <bucket name>  \
+        [number of workers] [--prefix <prefix>]  \
+        [--data-disk-gb <size>]
+
+Each instance is started with a Persistent Disk used for HDFS.  The size of the
+disk can be set with the `--data-disk-gb` parameter.  The default size is 500GB.
+Review the [documentation](https://developers.google.com/compute/docs/disks)
+for help in determining the disk size that provides the right performance
+for the cluster.
 
 If the instance is started for the first time, the script requires log in
 and asks for authorization to access Google Compute Engine.
-By default, it opens Web browser for this procedure.
+By default, the command opens Web browser for the authorization.
 If the script is run in remote host on terminal (on SSH, for example),
 it cannot open Web browser on local machine.
 In this case, `--noauth_local_webserver` option can be specified as instructed
 by the message as follows.
 
-    ./compute_cluster_for_hadoop.py --noauth_local_webserver start <project ID> <bucket name> [number of workers] [--prefix <prefix>]
+    ./compute_cluster_for_hadoop.py --noauth_local_webserver start  \
+        <project ID> <bucket name> [number of workers]  \
+        [--prefix <prefix>] [--data-disk-gb <size>]
 
 It avoids the attempt to open local Web browser, and it shows URL for
 authentication and authorization.
@@ -398,15 +417,6 @@ necessary files onto each instance.
 The custom command is executed under the permission of the user who started
 the instance.  If superuser privilege is required for the command execution,
 use `sudo` in the command.
-
-With older version of `gcutil`, the "start" subcommand fails with the
-repeated following message.  Please update to the latest version of gcutil.
-\([Download page](https://code.google.com/p/google-compute-engine-tools/downloads/list)\)
-
-    FATAL Flags parsing error: Unknown command line flag 'zone'
-
-If an error occurs resulting in Hadoop cluster set-up failure, delete existing
-instances from Google Compute Engine console, fix the issues and restart.
 
 ##### External IP Addresses on Worker Instances
 
@@ -486,11 +496,11 @@ Example:
 
     ./compute_cluster_for_hadoop.py shutdown <project ID> [--prefix <prefix>]
 
-In the application, Google Compute Engine instances use scratch disks for
-storage.  Therefore, **all files on Hadoop cluster, including HDFS, are
-deleted** when the cluster is shut down.  Since the application is not meant
-to maintain Hadoop cluster as persistent storage, important files must be kept
-in persistent storage, such as Google Cloud Storage.
+The application is designed to delete Google Compute Engine instances and disks
+when the cluster is shut down.  Therefore, **all files on the Hadoop cluster,
+including HDFS, are deleted** when the cluster is shut down.  For persistent
+storage beyond the lifespan of the cluster, use external persistent storage,
+such as Google Cloud Storage.
 
 #### Prefix and zone
 
@@ -509,6 +519,19 @@ There are restrictions in the prefix string.
 Similarly, if zone is specified by --zone parameter in `start` subcommand,
 the same zone must be specified for `mapreduce` and `shutdown` subcommands,
 so that the MapReduce task and shutdown are performed correctly.
+
+#### Cleaning up the environment
+
+After the cluster is shut down, and if the Hadoop cluster environment is not
+necessary any more, the following commands clean up the environment set up
+by `setup` command.
+
+    gcutil deletefirewall -f hdfs-datanode hdfs-namenode  \
+        hadoop-mr-jobtracker hadoop-mr-tasktracker
+    gsutil rm -f -r gs://<bucket name>/mapreduce/
+
+The same environment can be again set up by `setup` command, allowing the
+subsequent deployments of the Hadoop clusters.
 
 ### Log in to Hadoop master instance
 

@@ -41,7 +41,7 @@ class GceApi(object):
   """Google Client API wrapper for Google Compute Engine."""
 
   COMPUTE_ENGINE_SCOPE = 'https://www.googleapis.com/auth/compute'
-  COMPUTE_ENGINE_API_VERSION = 'v1beta16'
+  COMPUTE_ENGINE_API_VERSION = 'v1'
 
   def __init__(self, name, client_id, client_secret, project, zone):
     """Constructor.
@@ -60,9 +60,9 @@ class GceApi(object):
     self._zone = zone
 
   def GetApi(self):
-    """Does OAuth2 authorization and prepare Google Compute Engine API.
+    """Does OAuth2 authorization and prepares Google Compute Engine API.
 
-    Since access key may expire at any moment, call the funciton every time
+    Since access keys may expire at any moment, call the function every time
     making API call.
 
     Returns:
@@ -186,17 +186,19 @@ class GceApi(object):
         project=self._project, zone=self._zone, filter=filter_string).execute()
     return result.get('items', [])
 
-  def CreateInstance(self, instance_name, machine_type, image,
+  def CreateInstance(self, instance_name, machine_type, boot_disk, disks=None,
                      startup_script='', service_accounts=None,
                      external_ip=True, metadata=None, tags=None,
-                     can_ip_forward=False, kernel=None):
+                     can_ip_forward=False):
     """Creates Google Compute Engine instance.
 
     Args:
       instance_name: Name of the new instance.
       machine_type: Machine type.  e.g. 'n1-standard-2'
-      image: Machine image name.
-          e.g. 'projects/debian-cloud/global/images/debian-7-wheezy-v20130723'
+      boot_disk: Name of the persistent disk to be used as a boot disk.
+          The disk must preexist in the same zone as the instance.
+      disks: List of the names of the extra persistent disks attached to
+          the instance in addition to the boot disk.
       startup_script: Content of start up script to run on the new instance.
       service_accounts: List of scope URLs to give to the instance with
           the service account.
@@ -207,8 +209,6 @@ class GceApi(object):
       tags: String list of tags to attach to the new instance.
       can_ip_forward: Boolean to indicate if the new instance can forward IP
           packets.
-      kernel: Kernel name of the new instance.  If not specified, the default
-          kernel for the image is used.
     Returns:
       Boolean to indicate whether the instance creation was successful.
     """
@@ -218,7 +218,15 @@ class GceApi(object):
         'zone': self._ResourceUrl('zones', self._zone,
                                   zoning=ResourceZoning.NONE),
         'machineType': self._ResourceUrl('machineTypes', machine_type),
-        'image': self._ResourceUrlFromPath(image),
+        'disks': [
+            {
+                'kind': 'compute#attachedDisk',
+                'boot': True,
+                'source': self._ResourceUrl('disks', boot_disk),
+                'mode': 'READ_WRITE',
+                'type': 'PERSISTENT',
+            },
+        ],
         'metadata': {
             'kind': 'compute#metadata',
             'items': [
@@ -246,6 +254,18 @@ class GceApi(object):
         ],
     }
 
+    # Attach extra disks.
+    if disks:
+      for disk in disks:
+        params['disks'].append({
+            'kind': 'compute#attachedDisk',
+            'boot': False,
+            'source': self._ResourceUrl('disks', disk),
+            'deviceName': disk,
+            'mode': 'READ_WRITE',
+            'type': 'PERSISTENT',
+        })
+
     # Request external IP address if necessary.
     if external_ip:
       params['networkInterfaces'][0]['accessConfigs'].append({
@@ -262,11 +282,6 @@ class GceApi(object):
     # Add tags.
     if tags:
       params['tags'] = {'items': tags}
-
-    # Add kernel.
-    if kernel:
-      params['kernel'] = self._ResourceUrl(
-          'kernels', kernel, zoning=ResourceZoning.GLOBAL, project='google')
 
     operation = self.GetApi().instances().insert(
         project=self._project, zone=self._zone, body=params).execute()
@@ -293,6 +308,77 @@ class GceApi(object):
         logging.warning('Delete instance: %s not found', instance_name)
         return False
       raise
+
+  def GetDisk(self, disk_name):
+    """Gets persistent disk information.
+
+    Args:
+      disk_name: Name of the persistent disk to get information about.
+    Returns:
+      Google Compute Engine disk resource.  None if not found.
+      https://developers.google.com/compute/docs/reference/latest/disks
+    Raises:
+      HttpError on API error, except for 'resource not found' error.
+    """
+    try:
+      return self.GetApi().disks().get(
+          project=self._project, zone=self._zone, disk=disk_name).execute()
+    except apiclient.errors.HttpError as e:
+      if self.IsNotFoundError(e):
+        return None
+      raise
+
+  def ListDisks(self, filter_string=None):
+    """Lists disks that match filter condition.
+
+    Format of filter string can be found in the following URL.
+    https://developers.google.com/compute/docs/reference/latest/disks/list
+
+    Args:
+      filter_string: Filtering condition.
+    Returns:
+      List of compute#disk.
+    """
+    result = self.GetApi().disks().list(
+        project=self._project, zone=self._zone, filter=filter_string).execute()
+    return result.get('items', [])
+
+  def CreateDisk(self, disk_name, size_gb=10, image=None):
+    """Creates persistent disk in the zone of this API.
+
+    Args:
+      disk_name: Name of the new persistent disk.
+      size_gb: Size of the new persistent disk in GB.
+      image: Machine image name for the new disk to base upon.
+          e.g. 'projects/debian-cloud/global/images/debian-7-wheezy-v20131014'
+    Returns:
+      Boolean to indicate whether the disk creation was successful.
+    """
+    params = {
+        'kind': 'compute#disk',
+        'sizeGb': '%d' % size_gb,
+        'name': disk_name,
+    }
+    source_image = self._ResourceUrlFromPath(image) if image else None
+    operation = self.GetApi().disks().insert(
+        project=self._project, zone=self._zone, body=params,
+        sourceImage=source_image).execute()
+    return self._ParseOperation(
+        operation, 'Disk creation %s' % disk_name)
+
+  def DeleteDisk(self, disk_name):
+    """Deletes persistent disk.
+
+    Args:
+      disk_name: Name of the persistent disk to delete.
+    Returns:
+      Boolean to indicate whether the disk deletion was successful.
+    """
+    operation = self.GetApi().disks().delete(
+        project=self._project, zone=self._zone, disk=disk_name).execute()
+
+    return self._ParseOperation(
+        operation, 'Disk deletion: %s' % disk_name)
 
   def AddRoute(self, route_name, next_hop_instance,
                network='default', dest_range='0.0.0.0/0',

@@ -40,7 +40,6 @@ class GceClusterTest(unittest.TestCase):
     """
     # Patch functions.
     mock_gce_api_class = mock.patch('gce_api.GceApi').start()
-    mock_tarfile_open = mock.patch('tarfile.open').start()
     mock_subprocess_call = mock.patch('subprocess.call', return_value=0).start()
     mock_popen = mock.patch('subprocess.Popen').start()
     mock_popen.return_value.returncode = None
@@ -58,7 +57,12 @@ class GceClusterTest(unittest.TestCase):
     parent_mock.attach_mock(
         mock_gce_api_class.return_value.GetInstance,
         'GetInstance')
-    parent_mock.attach_mock(mock_tarfile_open, 'tarfile_open')
+    parent_mock.attach_mock(
+        mock_gce_api_class.return_value.CreateDisk,
+        'CreateDisk')
+    parent_mock.attach_mock(
+        mock_gce_api_class.return_value.GetDisk,
+        'GetDisk')
     parent_mock.attach_mock(mock_subprocess_call, 'subprocess_call')
     parent_mock.attach_mock(mock_popen, 'Popen')
     parent_mock.attach_mock(mock_popen.return_value.poll, 'poll')
@@ -73,6 +77,22 @@ class GceClusterTest(unittest.TestCase):
             }],
         }],
     }
+
+    # Total 6 disks (2 per instance x 3 instances).
+    mock_gce_api_class.return_value.GetDisk.side_effect = [
+        None,
+        {'status': 'READY'},
+        None,
+        {'status': 'READY'},
+        None,
+        {'status': 'READY'},
+        None,
+        {'status': 'READY'},
+        None,
+        {'status': 'READY'},
+        None,
+        {'status': 'READY'},
+    ]
 
     return parent_mock
 
@@ -117,6 +137,30 @@ class GceClusterTest(unittest.TestCase):
     # Create GceApi.
     call = method_calls.next()
     self.assertEqual('GceApi', call[0])
+    # See if boot disk exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hm', call[1][0])
+    # Create boot disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hm', call[1][0])
+    # See if boot disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hm', call[1][0])
+    # See if data disk exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hm-data', call[1][0])
+    # Create data disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hm-data', call[1][0])
+    # See if data disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hm-data', call[1][0])
     # Open start up script for Compute Engine instance.
     call = method_calls.next()
     self.assertEqual('open', call[0])
@@ -143,12 +187,60 @@ class GceClusterTest(unittest.TestCase):
     call = method_calls.next()
     self.assertEqual('subprocess_call', call[0])
     self.assertRegexpMatches(call[1][0], '^gcutil ssh')
+    # See if boot disk for worker instance #000 exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-000', call[1][0])
+    # Create boot disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hw-000', call[1][0])
+    # See if boot disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-000', call[1][0])
+    # See if data disk exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-000-data', call[1][0])
+    # Create data disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hw-000-data', call[1][0])
+    # See if data disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-000-data', call[1][0])
     # Create worker instance #000.
     call = method_calls.next()
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hw-000', call[1][0])
     self.assertTrue(call[2]['external_ip'])
     self.assertFalse(call[2]['can_ip_forward'])
+    # See if boot disk for worker instance #001 exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-001', call[1][0])
+    # Create boot disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hw-001', call[1][0])
+    # See if boot disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-001', call[1][0])
+    # See if data disk exists.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-001-data', call[1][0])
+    # Create data disk.
+    call = method_calls.next()
+    self.assertEqual('CreateDisk', call[0])
+    self.assertEqual('hw-001-data', call[1][0])
+    # See if data disk is ready.
+    call = method_calls.next()
+    self.assertEqual('GetDisk', call[0])
+    self.assertEqual('hw-001-data', call[1][0])
     # Create worker instance #001.
     call = method_calls.next()
     self.assertEqual('CreateInstance', call[0])
@@ -181,21 +273,21 @@ class GceClusterTest(unittest.TestCase):
 
     # Just check parameters of CreateInstance.
     # Master instance.
-    call = parent_mock.method_calls[4]
+    call = parent_mock.method_calls[10]
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hm', call[1][0])
     self.assertTrue(call[2]['external_ip'])
     self.assertTrue(call[2]['can_ip_forward'])
 
     # Worker 000.
-    call = parent_mock.method_calls[7]
+    call = parent_mock.method_calls[19]
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hw-000', call[1][0])
     self.assertFalse(call[2]['external_ip'])
     self.assertFalse(call[2]['can_ip_forward'])
 
     # Worker 001.
-    call = parent_mock.method_calls[8]
+    call = parent_mock.method_calls[26]
     self.assertEqual('CreateInstance', call[0])
     self.assertEqual('hw-001', call[1][0])
     self.assertFalse(call[2]['external_ip'])
@@ -222,17 +314,28 @@ class GceClusterTest(unittest.TestCase):
             command='', external_ip='all')).StartCluster)
 
     # Ensure ListInstances() and sleep() are called more than 120 times.
-    self.assertEqual(41, parent_mock.GetInstance.call_count)
-    self.assertEqual(40, parent_mock.sleep.call_count)
+    self.assertLessEqual(40, parent_mock.GetInstance.call_count)
+    self.assertLessEqual(40, parent_mock.sleep.call_count)
 
   def testTeardownCluster(self):
     """Unit test of TeardownCluster()."""
     with mock.patch('gce_api.GceApi') as mock_gce_api_class:
-      mock_gce_api_class.return_value.ListInstances.return_value = [
-          {'name': 'fugafuga'},
-          {'name': 'hogehoge'},
-          {'name': 'piyopiyo'},
+      mock_gce_api_class.return_value.ListInstances.side_effect = [
+          [
+              {'name': 'fugafuga'},
+              {'name': 'hogehoge'},
+              {'name': 'piyopiyo'},
+          ], []
       ]
+      mock_gce_api_class.return_value.ListDisks.side_effect = [
+          [
+              {'name': 'fugafuga-data'},
+              {'name': 'hogehoge-data'},
+              {'name': 'piyopiyo-data'},
+          ], []
+      ]
+      mock_gce_api_class.return_value.GetInstance.return_value = None
+      mock_gce_api_class.return_value.GetDisk.return_value = None
 
       GceCluster(argparse.Namespace(
           project='project-hoge', zone='zone-fuga')).TeardownCluster()
@@ -241,20 +344,30 @@ class GceClusterTest(unittest.TestCase):
           'hadoop_on_compute', mock.ANY, mock.ANY,
           'project-hoge', 'zone-fuga')
       (mock_gce_api_class.return_value.ListInstances.
-       assert_called_once_with(
-           'name eq "hm|^hw-\\d+$"'))
+       assert_called_with('name eq "^(hm|hw-\\d+)$"'))
+      (mock_gce_api_class.return_value.ListDisks.
+       assert_called_with('name eq "^(hm|hw-\\d+)(-data)?$"'))
       # Make sure DeleteInstance() is called for each instance.
       self.assertEqual(
           [mock.call('fugafuga'), mock.call('hogehoge'),
            mock.call('piyopiyo')],
           mock_gce_api_class.return_value.DeleteInstance.call_args_list)
+      self.assertEqual(
+          [mock.call('fugafuga-data'), mock.call('hogehoge-data'),
+           mock.call('piyopiyo-data')],
+          mock_gce_api_class.return_value.DeleteDisk.call_args_list)
 
   def testTeardownCluster_WithPrefix(self):
     """Unit test of TeardownCluster() with prefix."""
     with mock.patch('gce_api.GceApi') as mock_gce_api_class:
-      mock_gce_api_class.return_value.ListInstances.return_value = [
-          {'name': 'wahoooo'},
+      mock_gce_api_class.return_value.ListInstances.side_effect = [
+          [{'name': 'wahoooo'}], []
       ]
+      mock_gce_api_class.return_value.ListDisks.side_effect = [
+          [{'name': 'wahoooo-data'}], []
+      ]
+      mock_gce_api_class.return_value.GetInstance.return_value = None
+      mock_gce_api_class.return_value.GetDisk.return_value = None
 
       GceCluster(argparse.Namespace(
           project='project-hoge', zone='zone-fuga',
@@ -265,17 +378,22 @@ class GceClusterTest(unittest.TestCase):
           'project-hoge', 'zone-fuga')
       # Make sure prefix is included in instance name patterns.
       (mock_gce_api_class.return_value.ListInstances.
-       assert_called_once_with(
-           'name eq "boo-hm|^boo-hw-\\d+$"'))
+       assert_called_with('name eq "^(boo-hm|boo-hw-\\d+)$"'))
+      (mock_gce_api_class.return_value.ListDisks.
+       assert_called_with('name eq "^(boo-hm|boo-hw-\\d+)(-data)?$"'))
       self.assertEqual(
           [mock.call('wahoooo')],
           mock_gce_api_class.return_value.DeleteInstance.call_args_list)
+      self.assertEqual(
+          [mock.call('wahoooo-data')],
+          mock_gce_api_class.return_value.DeleteDisk.call_args_list)
 
   def testTeardownCluster_NoInstance(self):
     """Unit test of TeardownCluster() with no instance returned by list."""
     with mock.patch('gce_api.GceApi') as mock_gce_api_class:
-      # ListInstances() returns empty list.
+      # ListInstances() and ListDisks() return empty list.
       mock_gce_api_class.return_value.ListInstances.return_value = []
+      mock_gce_api_class.return_value.ListDisks.return_value = []
 
       GceCluster(argparse.Namespace(
           project='project-hoge', zone='zone-fuga')).TeardownCluster()
@@ -284,11 +402,15 @@ class GceClusterTest(unittest.TestCase):
           'hadoop_on_compute', mock.ANY, mock.ANY,
           'project-hoge', 'zone-fuga')
       (mock_gce_api_class.return_value.ListInstances.
-       assert_called_once_with(
-           'name eq "hm|^hw-\\d+$"'))
+       assert_called_once_with('name eq "^(hm|hw-\\d+)$"'))
+      (mock_gce_api_class.return_value.ListDisks.
+       assert_called_once_with('name eq "^(hm|hw-\\d+)(-data)?$"'))
       # Make sure DeleteInstance() is not called.
       self.assertFalse(
           mock_gce_api_class.return_value.DeleteInstance.called)
+      # Make sure DeleteDisk() is not called.
+      self.assertFalse(
+          mock_gce_api_class.return_value.DeleteDisk.called)
 
   def testStartMapReduce(self):
     """Unit test of StartMapReduce()."""

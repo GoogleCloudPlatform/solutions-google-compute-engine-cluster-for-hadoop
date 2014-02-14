@@ -113,6 +113,9 @@ class ComputeClusterForHadoop(object):
         '--machinetype', default='',
         help='Machine type of Google Compute Engine instance.')
     parser_start.add_argument(
+        '--data-disk-gb', default=0, type=int,
+        help='Size of persistent disk for data per instance in GB.')
+    parser_start.add_argument(
         '--command', default='',
         help='Additional command to run on each instance.')
     parser_start.add_argument(

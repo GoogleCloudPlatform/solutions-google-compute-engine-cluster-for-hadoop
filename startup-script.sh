@@ -23,31 +23,33 @@ function die() {
   exit 1
 }
 
-declare -r METADATA_ROOT=http://metadata/computeMetadata/v1beta1
-
-function metadata_url() {
-  echo $METADATA_ROOT/instance/attributes/$1
-}
+declare -r METADATA_ROOT=http://metadata/computeMetadata/v1
 
 function get_metadata_value() {
-  name=$1
-  echo $(curl --silent -f $(metadata_url $name))
+  path=$1
+  curl --silent -f -H 'X-Google-Metadata-Request: True' $METADATA_ROOT/$path
 }
 
-NUM_WORKERS=$(get_metadata_value 'num-workers')
-HADOOP_MASTER=$(get_metadata_value 'hadoop-master')
-WORKER_NAME_TEMPLATE=$(get_metadata_value 'hadoop-worker-template')
-TMP_CLOUD_STORAGE=$(get_metadata_value 'tmp-cloud-storage')
-CUSTOM_COMMAND=$(get_metadata_value 'custom-command')
+function get_custom_metadata() {
+  name=$1
+  get_metadata_value "instance/attributes/$name"
+}
 
-THIS_HOST=$(curl --silent -f  \
-    $METADATA_ROOT/instance/network-interfaces/0/access-configs/0/external-ip)
+NUM_WORKERS=$(get_custom_metadata 'num-workers')
+HADOOP_MASTER=$(get_custom_metadata 'hadoop-master')
+WORKER_NAME_TEMPLATE=$(get_custom_metadata 'hadoop-worker-template')
+TMP_CLOUD_STORAGE=$(get_custom_metadata 'tmp-cloud-storage')
+CUSTOM_COMMAND=$(get_custom_metadata 'custom-command')
+DATA_DISK_ID=$(get_custom_metadata 'data-disk-id')
+
+THIS_HOST=$(get_metadata_value  \
+    instance/network-interfaces/0/access-configs/0/external-ip)
 if [[ ! "$THIS_HOST" ]] ; then
   THIS_HOST=$(hostname)
 fi
 
 # Set up routing on master on cluster with no external IP address on workers.
-if (( ! $(get_metadata_value 'worker-external-ip') )) &&  \
+if (( ! $(get_custom_metadata 'worker-external-ip') )) &&  \
     [[ "$(hostname)" == "$HADOOP_MASTER" ]] ; then
   echo "Setting up Hadoop master as Internet gateway for workers."
   # Turn on IP forwarding on kernel.
@@ -64,7 +66,7 @@ echo hadoop hard nofile 32768 >> /etc/security/limits.conf
 
 # Mount ephemeral disk
 declare -r HADOOP_ROOT=/hadoop
-declare -r DISK_DEVICE=/dev/disk/by-id/google-ephemeral-disk-0
+declare -r DISK_DEVICE=/dev/disk/by-id/google-$DATA_DISK_ID
 
 mkdir $HADOOP_ROOT
 /usr/share/google/safe_format_and_mount $DISK_DEVICE $HADOOP_ROOT
@@ -93,10 +95,10 @@ mkdir $HADOOP_LOG_DIR
 chgrp hadoop $HADOOP_LOG_DIR
 chmod g+w $HADOOP_LOG_DIR
 
-# Error check in CreateTrackerDirIfNeeded() in gslib/util.py in gsutil 3.34
-# (line 114) raises exception when called from Hadoop streaming MapReduce,
+# Error check in CreateTrackerDirIfNeeded() in gslib/util.py in gsutil 3.37
+# (line 119) raises exception when called from Hadoop streaming MapReduce,
 # saying permission error to create /homes.
-perl -pi -e '$.>110 and $.<120 and s/raise$/pass/'  \
+perl -pi -e '$.>110 and $.<125 and s/raise$/pass/'  \
     /usr/local/share/google/gsutil/gslib/util.py
 
 declare -r TMP_DIR=/tmp/hadoop_package
@@ -112,8 +114,8 @@ mkdir -p $TMP_DIR
 # Set up SSH keys for hadoop user.
 SSH_KEY_DIR=$HADOOP_HOME/.ssh
 mkdir -p $SSH_KEY_DIR
-curl -o $SSH_KEY_DIR/id_rsa $(metadata_url hadoop-private-key)
-curl -o $SSH_KEY_DIR/authorized_keys $(metadata_url hadoop-public-key)
+get_custom_metadata 'hadoop-private-key' > $SSH_KEY_DIR/id_rsa
+get_custom_metadata 'hadoop-public-key' > $SSH_KEY_DIR/authorized_keys
 
 # Allow SSH between Hadoop cluster instances without user intervention.
 SSH_CLIENT_CONFIG=$SSH_KEY_DIR/config
@@ -125,13 +127,12 @@ chmod 600 $SSH_KEY_DIR/id_rsa
 chmod 700 $SSH_KEY_DIR
 chmod 600 $SSH_CLIENT_CONFIG
 
-# if [[ $HADOOP_MASTER == "$(hostname)" ]] ; then
-  # Download packages from Cloud Storage.
-  gsutil -m cp -R $TMP_CLOUD_STORAGE/$HADOOP_DIR.tar.gz  \
-      $TMP_CLOUD_STORAGE/$DEB_PACKAGE_DIR  \
-      $TMP_DIR ||  \
-      die "Failed to download Hadoop and required packages from "  \
-          "$TMP_CLOUD_STORAGE/"
+# Download packages from Cloud Storage.
+gsutil -m cp -R $TMP_CLOUD_STORAGE/$HADOOP_DIR.tar.gz  \
+    $TMP_CLOUD_STORAGE/$DEB_PACKAGE_DIR  \
+    $TMP_DIR ||  \
+    die "Failed to download Hadoop and required packages from "  \
+        "$TMP_CLOUD_STORAGE/"
 
 # Set up Java Runtime Environment.
 dpkg -i --force-depends $TMP_DIR/$DEB_PACKAGE_DIR/*.deb
@@ -175,12 +176,6 @@ NEKO
 sudo -u hadoop bash $SCRIPT_AS_HADOOP ||  \
     die "Failed to run set-up command as hadoop user"
 
-# Error check in CreateTrackerDirIfNeeded() in gslib/util.py in gsutil 3.34
-# (line 114) raises exception when called from Hadoop streaming MapReduce,
-# saying permission error to create /homes.
-perl -pi -e '$.>110 and $.<120 and s/raise$/pass/'  \
-    /usr/local/share/google/gsutil/gslib/util.py
-
 # Run custom commands.
 eval "$CUSTOM_COMMAND" || die "Custom command error: $CUSTOM_COMMAND"
 
@@ -195,7 +190,7 @@ function maybe_start_node() {
   condition=$1 ; shift
   failure_message=$1 ; shift
 
-  if (( $(get_metadata_value $condition) )) ; then
+  if (( $(get_custom_metadata $condition) )) ; then
     run_as_hadoop "$failure_message" $@
   fi
 }
@@ -213,7 +208,7 @@ function start_namenode() {
       secondarynamenode
 }
 
-if (( $(get_metadata_value NameNode) )) ; then
+if (( $(get_custom_metadata NameNode) )) ; then
   start_namenode
 fi
 
